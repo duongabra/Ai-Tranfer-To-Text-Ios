@@ -1,0 +1,14 @@
+// Config.xcconfig.example
+// File mẫu - Copy thành Config.xcconfig và điền thông tin thật
+// Tương tự .env.example trong web development
+
+// Supabase Configuration
+// Lấy từ: https://supabase.com/dashboard → Project Settings → API
+SUPABASE_URL = https:/$()/your-project.supabase.co
+SUPABASE_ANON_KEY = your_supabase_anon_key_here
+
+// AI API Configuration
+// Groq: https://console.groq.com → API Keys
+// OpenAI: https://platform.openai.com → API Keys
+AI_API_KEY = your_ai_api_key_here
+

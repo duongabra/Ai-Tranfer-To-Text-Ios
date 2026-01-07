@@ -18,6 +18,9 @@ struct ConversationListView: View {
     // State để hiển thị/ẩn sheet tạo conversation mới
     @State private var showingNewConversationSheet = false
     
+    // State để hiển thị/ẩn paywall
+    @State private var showingPaywall = false
+    
     var body: some View {
         // NavigationStack: cho phép navigate giữa các màn hình
         NavigationStack {
@@ -49,6 +52,19 @@ struct ConversationListView: View {
                     }
                 }
                 
+                // Nút Upgrade to Premium
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        showingPaywall = true
+                    }) {
+                        HStack {
+                            Image(systemName: "crown.fill")
+                            Text("Premium")
+                        }
+                        .foregroundColor(.yellow)
+                    }
+                }
+                
                 // Nút "+" ở góc phải để tạo conversation mới
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
@@ -62,6 +78,10 @@ struct ConversationListView: View {
             // Sheet để tạo conversation mới
             .sheet(isPresented: $showingNewConversationSheet) {
                 NewConversationSheet(viewModel: viewModel)
+            }
+            // Sheet để hiển thị paywall
+            .sheet(isPresented: $showingPaywall) {
+                PaywallView()
             }
             // Alert hiển thị lỗi (nếu có)
             .alert("Lỗi", isPresented: .constant(viewModel.errorMessage != nil)) {

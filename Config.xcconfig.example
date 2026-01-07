@@ -12,3 +12,6 @@ SUPABASE_ANON_KEY = your_supabase_anon_key_here
 // OpenAI: https://platform.openai.com → API Keys
 AI_API_KEY = your_ai_api_key_here
 
+// RevenueCat Configuration
+// Lấy từ: https://app.revenuecat.com → Project Settings → API Keys
+REVENUECAT_API_KEY = your_revenuecat_api_key_here

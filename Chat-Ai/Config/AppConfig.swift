@@ -44,6 +44,10 @@ struct AppConfig {
     
     static let aiAPIKey = infoPlistValue(for: "AI_API_KEY")
     
+    // MARK: - RevenueCat Configuration
+    
+    static let revenueCatAPIKey = infoPlistValue(for: "REVENUECAT_API_KEY")
+    
     // Chọn loại AI service muốn dùng
     enum AIProvider {
         case groq    // Groq API (miễn phí, nhanh)

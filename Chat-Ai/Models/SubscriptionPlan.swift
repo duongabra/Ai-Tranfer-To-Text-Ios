@@ -6,22 +6,37 @@
 //
 
 import Foundation
+import RevenueCat
 
 // MARK: - SubscriptionPlan
 
 /// Định nghĩa các gói subscription
-enum SubscriptionPlan: String, CaseIterable, Identifiable {
-    case free = "free"
-    case weekly = "com.whales.freechat.weekly"
-    case monthly = "com.whales.freechat.monthly"
+struct SubscriptionPlan: Identifiable {
+    let id: String
+    let type: PlanType
+    var package: Package? // RevenueCat Package (chứa thông tin giá thật)
     
-    var id: String { rawValue }
+    // MARK: - PlanType
+    
+    enum PlanType: String {
+        case free = "free"
+        case weekly = "com.whales.freechat.weekly"
+        case monthly = "com.whales.freechat.monthly"
+    }
+    
+    // MARK: - Initializers
+    
+    init(type: PlanType, package: Package? = nil) {
+        self.id = type.rawValue
+        self.type = type
+        self.package = package
+    }
     
     // MARK: - Display Information
     
     /// Tên hiển thị của gói
     var title: String {
-        switch self {
+        switch type {
         case .free:
             return "Free"
         case .weekly:
@@ -33,7 +48,7 @@ enum SubscriptionPlan: String, CaseIterable, Identifiable {
     
     /// Mô tả gói
     var description: String {
-        switch self {
+        switch type {
         case .free:
             return "10 messages per day"
         case .weekly:
@@ -43,9 +58,14 @@ enum SubscriptionPlan: String, CaseIterable, Identifiable {
         }
     }
     
-    /// Giá hiển thị (USD)
+    /// Giá hiển thị (lấy từ RevenueCat nếu có, fallback về giá mặc định)
     var price: String {
-        switch self {
+        if let package = package {
+            return package.storeProduct.localizedPriceString
+        }
+        
+        // Fallback giá mặc định nếu chưa có package
+        switch type {
         case .free:
             return "$0"
         case .weekly:
@@ -57,7 +77,7 @@ enum SubscriptionPlan: String, CaseIterable, Identifiable {
     
     /// Duration hiển thị
     var duration: String {
-        switch self {
+        switch type {
         case .free:
             return ""
         case .weekly:
@@ -71,7 +91,7 @@ enum SubscriptionPlan: String, CaseIterable, Identifiable {
     
     /// Danh sách tính năng của gói
     var features: [String] {
-        switch self {
+        switch type {
         case .free:
             return [
                 "10 messages per day",
@@ -97,7 +117,7 @@ enum SubscriptionPlan: String, CaseIterable, Identifiable {
     
     /// Icon cho từng gói
     var icon: String {
-        switch self {
+        switch type {
         case .free:
             return "circle"
         case .weekly:
@@ -109,7 +129,7 @@ enum SubscriptionPlan: String, CaseIterable, Identifiable {
     
     /// Màu sắc cho từng gói
     var accentColor: String {
-        switch self {
+        switch type {
         case .free:
             return "gray"
         case .weekly:
@@ -121,7 +141,7 @@ enum SubscriptionPlan: String, CaseIterable, Identifiable {
     
     /// Có phải gói premium không?
     var isPremium: Bool {
-        return self != .free
+        return type != .free
     }
 }
 

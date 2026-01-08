@@ -11,7 +11,8 @@ import RevenueCat
 struct PaywallView: View {
     
     @Environment(\.dismiss) var dismiss
-    @State private var selectedPlan: SubscriptionPlan = .monthly // Default chọn Monthly
+    @State private var availablePlans: [SubscriptionPlan] = []
+    @State private var selectedPlan: SubscriptionPlan?
     @State private var isLoading = false
     @State private var errorMessage: String?
     
@@ -38,18 +39,23 @@ struct PaywallView: View {
                     .padding(.top, 20)
                     
                     // MARK: - Plans
-                    VStack(spacing: 15) {
-                        ForEach([SubscriptionPlan.weekly, SubscriptionPlan.monthly]) { plan in
-                            PlanCard(
-                                plan: plan,
-                                isSelected: selectedPlan == plan,
-                                onTap: {
-                                    selectedPlan = plan
-                                }
-                            )
+                    if isLoading && availablePlans.isEmpty {
+                        ProgressView("Loading plans...")
+                            .padding()
+                    } else {
+                        VStack(spacing: 15) {
+                            ForEach(availablePlans.filter { $0.isPremium }) { plan in
+                                PlanCard(
+                                    plan: plan,
+                                    isSelected: selectedPlan?.id == plan.id,
+                                    onTap: {
+                                        selectedPlan = plan
+                                    }
+                                )
+                            }
                         }
+                        .padding(.horizontal)
                     }
-                    .padding(.horizontal)
                     
                     // MARK: - Features
                     VStack(alignment: .leading, spacing: 15) {
@@ -75,17 +81,17 @@ struct PaywallView: View {
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             } else {
-                                Text("Subscribe to \(selectedPlan.title)")
+                                Text("Subscribe to \(selectedPlan?.title ?? "Premium")")
                                     .fontWeight(.semibold)
                             }
                         }
                         .frame(maxWidth: .infinity)
                         .padding()
-                        .background(Color.blue)
+                        .background(selectedPlan != nil ? Color.blue : Color.gray)
                         .foregroundColor(.white)
                         .cornerRadius(12)
                     }
-                    .disabled(isLoading)
+                    .disabled(isLoading || selectedPlan == nil)
                     .padding(.horizontal)
                     
                     // MARK: - Error Message
@@ -122,28 +128,50 @@ struct PaywallView: View {
                     }
                 }
             }
+            .task {
+                await loadPlans()
+            }
+        }
+    }
+    
+    // MARK: - Load Plans
+    
+    private func loadPlans() async {
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            availablePlans = try await RevenueCatService.shared.getAvailablePlans()
+            
+            // Auto-select Monthly plan nếu có
+            if let monthlyPlan = availablePlans.first(where: { $0.type == .monthly }) {
+                selectedPlan = monthlyPlan
+            } else if let firstPremiumPlan = availablePlans.first(where: { $0.isPremium }) {
+                selectedPlan = firstPremiumPlan
+            }
+            
+            isLoading = false
+        } catch {
+            errorMessage = "Failed to load plans: \(error.localizedDescription)"
+            isLoading = false
+            print("❌ Error loading plans: \(error)")
         }
     }
     
     // MARK: - Subscribe Action
     
     private func subscribeToPlan() {
+        guard let selectedPlan = selectedPlan,
+              let package = selectedPlan.package else {
+            errorMessage = "Please select a plan"
+            return
+        }
+        
         isLoading = true
         errorMessage = nil
         
         Task {
             do {
-                // Lấy offerings từ RevenueCat
-                let offerings = try await RevenueCatService.shared.getOfferings()
-                
-                // Tìm package tương ứng với plan đã chọn
-                guard let currentOffering = offerings.current,
-                      let package = findPackage(for: selectedPlan, in: currentOffering) else {
-                    errorMessage = "Package not found. Please try again."
-                    isLoading = false
-                    return
-                }
-                
                 // Mua package
                 _ = try await RevenueCatService.shared.purchase(package: package)
                 
@@ -180,20 +208,6 @@ struct PaywallView: View {
         }
     }
     
-    // MARK: - Helper
-    
-    /// Tìm package từ offering dựa vào plan
-    private func findPackage(for plan: SubscriptionPlan, in offering: Offering) -> Package? {
-        // RevenueCat có các package types: weekly, monthly, annual, ...
-        switch plan {
-        case .weekly:
-            return offering.weekly
-        case .monthly:
-            return offering.monthly
-        case .free:
-            return nil
-        }
-    }
 }
 
 // MARK: - Plan Card
@@ -211,7 +225,7 @@ struct PlanCard: View {
                         Text(plan.title)
                             .font(.headline)
                         
-                        if plan == .monthly {
+                        if plan.type == .monthly {
                             Text("BEST VALUE")
                                 .font(.caption2)
                                 .fontWeight(.bold)

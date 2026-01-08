@@ -38,6 +38,49 @@ actor RevenueCatService {
         return try await Purchases.shared.offerings()
     }
     
+    /// Lấy danh sách subscription plans với giá thật từ RevenueCat
+    func getAvailablePlans() async throws -> [SubscriptionPlan] {
+        let offerings = try await getOfferings()
+        
+        guard let currentOffering = offerings.current else {
+            print("⚠️ No current offering found")
+            // Trả về gói Free nếu không có offerings
+            return [SubscriptionPlan(type: .free)]
+        }
+        
+        print("📦 Current offering: \(currentOffering.identifier)")
+        print("📦 Available packages count: \(currentOffering.availablePackages.count)")
+        
+        var plans: [SubscriptionPlan] = []
+        
+        // Luôn thêm gói Free đầu tiên
+        plans.append(SubscriptionPlan(type: .free))
+        
+        // Duyệt qua các packages trong offering
+        for package in currentOffering.availablePackages {
+            let productId = package.storeProduct.productIdentifier
+            let packageId = package.identifier
+            
+            print("📦 Package: \(packageId) → Product: \(productId)")
+            
+            // Map product ID với plan type
+            if productId == "com.whales.freechat.weekly" {
+                let plan = SubscriptionPlan(type: .weekly, package: package)
+                plans.append(plan)
+                print("✅ Added Weekly plan")
+            } else if productId == "com.whales.freechat.monthly" {
+                let plan = SubscriptionPlan(type: .monthly, package: package)
+                plans.append(plan)
+                print("✅ Added Monthly plan")
+            } else {
+                print("⚠️ Unknown product: \(productId)")
+            }
+        }
+        
+        print("✅ Loaded \(plans.count) subscription plans from RevenueCat")
+        return plans
+    }
+    
     // MARK: - Purchase
     
     /// Mua một subscription package
@@ -97,11 +140,11 @@ actor RevenueCatService {
                 let plan: SubscriptionPlan
                 
                 if productId.contains("weekly") {
-                    plan = .weekly
+                    plan = SubscriptionPlan(type: .weekly)
                 } else if productId.contains("monthly") {
-                    plan = .monthly
+                    plan = SubscriptionPlan(type: .monthly)
                 } else {
-                    plan = .free
+                    plan = SubscriptionPlan(type: .free)
                 }
                 
                 return SubscriptionStatus(
@@ -113,7 +156,7 @@ actor RevenueCatService {
             
             // Không có active subscription
             return SubscriptionStatus(
-                currentPlan: .free,
+                currentPlan: SubscriptionPlan(type: .free),
                 isActive: false,
                 expirationDate: nil
             )
@@ -121,7 +164,7 @@ actor RevenueCatService {
         } catch {
             print("❌ Error getting subscription status: \(error)")
             return SubscriptionStatus(
-                currentPlan: .free,
+                currentPlan: SubscriptionPlan(type: .free),
                 isActive: false,
                 expirationDate: nil
             )

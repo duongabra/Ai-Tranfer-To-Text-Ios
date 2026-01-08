@@ -21,6 +21,9 @@ struct ConversationListView: View {
     // State để hiển thị/ẩn paywall
     @State private var showingPaywall = false
     
+    // State để hiển thị/ẩn confirmation dialog xóa tất cả
+    @State private var showingClearAllConfirmation = false
+    
     var body: some View {
         // NavigationStack: cho phép navigate giữa các màn hình
         NavigationStack {
@@ -49,6 +52,18 @@ struct ConversationListView: View {
                     }) {
                         Image(systemName: "rectangle.portrait.and.arrow.right")
                             .foregroundColor(.red)
+                    }
+                }
+                
+                // Nút Clear All (chỉ hiện khi có conversations)
+                ToolbarItem(placement: .navigationBarLeading) {
+                    if !viewModel.conversations.isEmpty {
+                        Button(action: {
+                            showingClearAllConfirmation = true
+                        }) {
+                            Image(systemName: "trash")
+                                .foregroundColor(.red)
+                        }
                     }
                 }
                 
@@ -92,6 +107,17 @@ struct ConversationListView: View {
                 if let errorMessage = viewModel.errorMessage {
                     Text(errorMessage)
                 }
+            }
+            // Confirmation dialog xóa tất cả
+            .confirmationDialog("Xóa tất cả cuộc hội thoại?", isPresented: $showingClearAllConfirmation, titleVisibility: .visible) {
+                Button("Xóa tất cả", role: .destructive) {
+                    Task {
+                        await viewModel.clearAllConversations()
+                    }
+                }
+                Button("Hủy", role: .cancel) {}
+            } message: {
+                Text("Hành động này không thể hoàn tác. Tất cả cuộc hội thoại và tin nhắn sẽ bị xóa vĩnh viễn.")
             }
             // Load conversations khi view xuất hiện
             .task {

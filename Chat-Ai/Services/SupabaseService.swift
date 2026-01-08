@@ -48,32 +48,42 @@ actor SupabaseService {
         }
         
         // Tạo authenticated request
-        let request = try await createAuthenticatedRequest(url: url, method: "GET")
+        var request = try await createAuthenticatedRequest(url: url, method: "GET")
         
-        // Gọi API và parse response
-        let (data, response) = try await URLSession.shared.data(for: request)
+        // ✅ Tăng timeout để tránh bị cancel
+        request.timeoutInterval = 30 // 30 seconds
         
-        // Kiểm tra response có thành công không (status code 200-299)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw SupabaseError.requestFailed
+        do {
+            // Gọi API và parse response
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            // Kiểm tra response có thành công không (status code 200-299)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw SupabaseError.requestFailed
+            }
+            
+            // ✅ Kiểm tra 401 Unauthorized → Token hết hạn
+            if httpResponse.statusCode == 401 {
+                print("❌ 401 Unauthorized - Token hết hạn")
+                throw SupabaseError.unauthorized
+            }
+            
+            guard (200...299).contains(httpResponse.statusCode) else {
+                print("❌ Supabase error: Status \(httpResponse.statusCode)")
+                throw SupabaseError.requestFailed
+            }
+            
+            // Decode JSON thành array của Conversation
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601 // Parse date format ISO 8601
+            let conversations = try decoder.decode([Conversation].self, from: data)
+            
+            return conversations
+        } catch let error as NSError where error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled {
+            // ⚠️ Request bị cancel → Throw CancellationError để ViewModel xử lý
+            print("⚠️ Request cancelled")
+            throw CancellationError()
         }
-        
-        // ✅ Kiểm tra 401 Unauthorized → Token hết hạn
-        if httpResponse.statusCode == 401 {
-            print("❌ 401 Unauthorized - Token hết hạn")
-            throw SupabaseError.unauthorized
-        }
-        
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw SupabaseError.requestFailed
-        }
-        
-        // Decode JSON thành array của Conversation
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601 // Parse date format ISO 8601
-        let conversations = try decoder.decode([Conversation].self, from: data)
-        
-        return conversations
     }
     
     /// Tạo một conversation mới
@@ -162,6 +172,42 @@ actor SupabaseService {
         guard (200...299).contains(httpResponse.statusCode) else {
             throw SupabaseError.requestFailed
         }
+    }
+    
+    /// Xóa tất cả conversations của user hiện tại
+    func deleteAllConversations() async throws {
+        let userId = AppConfig.getCurrentUserId()
+        
+        // Filter theo user_id
+        guard let url = URL(string: "\(AppConfig.supabaseURL)/rest/v1/conversations?user_id=eq.\(userId.uuidString)") else {
+            throw SupabaseError.invalidURL
+        }
+        
+        // Tạo authenticated DELETE request
+        let request = try await createAuthenticatedRequest(url: url, method: "DELETE")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SupabaseError.requestFailed
+        }
+        
+        // ✅ Kiểm tra 401 Unauthorized → Token hết hạn
+        if httpResponse.statusCode == 401 {
+            print("❌ 401 Unauthorized - Token hết hạn")
+            throw SupabaseError.unauthorized
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            // Debug: In ra lỗi chi tiết
+            print("❌ Delete All Conversations Error - Status Code: \(httpResponse.statusCode)")
+            if let errorString = String(data: data, encoding: .utf8) {
+                print("❌ Error Response: \(errorString)")
+            }
+            throw SupabaseError.requestFailed
+        }
+        
+        print("✅ Deleted all conversations for user \(userId)")
     }
     
     // MARK: - Messages Methods
@@ -296,6 +342,79 @@ actor SupabaseService {
               (200...299).contains(httpResponse.statusCode) else {
             throw SupabaseError.requestFailed
         }
+    }
+    
+    /// Cập nhật title của conversation
+    /// - Parameters:
+    ///   - conversationId: ID của conversation
+    ///   - newTitle: Tên mới
+    func updateConversationTitle(conversationId: UUID, newTitle: String) async throws {
+        guard let url = URL(string: "\(AppConfig.supabaseURL)/rest/v1/conversations?id=eq.\(conversationId.uuidString)") else {
+            throw SupabaseError.invalidURL
+        }
+        
+        // Tạo JSON body với title mới
+        let updateData: [String: Any] = [
+            "title": newTitle,
+            "updated_at": ISO8601DateFormatter().string(from: Date())
+        ]
+        
+        let jsonData = try JSONSerialization.data(withJSONObject: updateData)
+        
+        // Tạo authenticated PATCH request
+        var request = try await createAuthenticatedRequest(url: url, method: "PATCH")
+        request.httpBody = jsonData
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SupabaseError.requestFailed
+        }
+        
+        // ✅ Kiểm tra 401 Unauthorized → Token hết hạn
+        if httpResponse.statusCode == 401 {
+            print("❌ 401 Unauthorized - Token hết hạn")
+            throw SupabaseError.unauthorized
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            print("❌ Update title error: Status \(httpResponse.statusCode)")
+            if let errorString = String(data: data, encoding: .utf8) {
+                print("❌ Error Response: \(errorString)")
+            }
+            throw SupabaseError.requestFailed
+        }
+        
+        print("✅ Updated conversation title to: \(newTitle)")
+    }
+    
+    /// Xóa tất cả messages trong một conversation
+    /// - Parameter conversationId: ID của conversation
+    func deleteAllMessages(conversationId: UUID) async throws {
+        guard let url = URL(string: "\(AppConfig.supabaseURL)/rest/v1/messages?conversation_id=eq.\(conversationId.uuidString)") else {
+            throw SupabaseError.invalidURL
+        }
+        
+        // Tạo authenticated DELETE request
+        let request = try await createAuthenticatedRequest(url: url, method: "DELETE")
+        
+        let (_, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SupabaseError.requestFailed
+        }
+        
+        // ✅ Kiểm tra 401 Unauthorized → Token hết hạn
+        if httpResponse.statusCode == 401 {
+            print("❌ 401 Unauthorized - Token hết hạn")
+            throw SupabaseError.unauthorized
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw SupabaseError.requestFailed
+        }
+        
+        print("✅ Deleted all messages in conversation \(conversationId)")
     }
 }
 

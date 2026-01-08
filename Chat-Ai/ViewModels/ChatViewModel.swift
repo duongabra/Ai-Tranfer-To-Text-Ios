@@ -20,12 +20,16 @@ class ChatViewModel: ObservableObject {
     @Published var selectedFile: FileAttachment?   // File đã chọn (chưa gửi)
     @Published var isUploadingFile = false         // Đang upload file?
     
+    // ✅ Conversation title (có thể thay đổi khi rename)
+    @Published var conversationTitle: String
+    
     let conversation: Conversation                 // Conversation hiện tại
     
     /// Initializer
     /// - Parameter conversation: Conversation cần hiển thị
     init(conversation: Conversation) {
         self.conversation = conversation
+        self.conversationTitle = conversation.title // Khởi tạo title
     }
     
     /// Load tất cả messages của conversation
@@ -207,6 +211,75 @@ class ChatViewModel: ObservableObject {
     /// Hủy file đã chọn
     func cancelFileSelection() {
         selectedFile = nil
+    }
+    
+    /// Xóa tất cả messages trong conversation (giữ lại conversation)
+    func clearAllMessages() async {
+        do {
+            // Xóa tất cả messages trong database
+            try await SupabaseService.shared.deleteAllMessages(conversationId: conversation.id)
+            
+            // Clear local array
+            messages.removeAll()
+            
+            print("✅ Cleared all messages in conversation")
+        } catch {
+            // ✅ Kiểm tra nếu là lỗi 401 Unauthorized → Logout
+            if let supabaseError = error as? SupabaseError, supabaseError == .unauthorized {
+                await AuthService.shared.handleUnauthorizedError()
+                return
+            }
+            
+            errorMessage = "Không thể xóa tin nhắn: \(error.localizedDescription)"
+            print("❌ Error clearing messages: \(error)")
+        }
+    }
+    
+    /// Xóa conversation (bao gồm cả messages)
+    func deleteConversation() async {
+        do {
+            // Xóa conversation trong database (messages sẽ tự động xóa do CASCADE)
+            try await SupabaseService.shared.deleteConversation(id: conversation.id)
+            
+            print("✅ Deleted conversation")
+        } catch {
+            // ✅ Kiểm tra nếu là lỗi 401 Unauthorized → Logout
+            if let supabaseError = error as? SupabaseError, supabaseError == .unauthorized {
+                await AuthService.shared.handleUnauthorizedError()
+                return
+            }
+            
+            errorMessage = "Không thể xóa cuộc hội thoại: \(error.localizedDescription)"
+            print("❌ Error deleting conversation: \(error)")
+        }
+    }
+    
+    /// Đổi tên conversation
+    func renameConversation(newTitle: String) async {
+        let trimmedTitle = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { return }
+        
+        do {
+            // Update title trong database
+            try await SupabaseService.shared.updateConversationTitle(
+                conversationId: conversation.id,
+                newTitle: trimmedTitle
+            )
+            
+            // ✅ Update local title để UI tự động refresh
+            conversationTitle = trimmedTitle
+            
+            print("✅ Renamed conversation to: \(trimmedTitle)")
+        } catch {
+            // ✅ Kiểm tra nếu là lỗi 401 Unauthorized → Logout
+            if let supabaseError = error as? SupabaseError, supabaseError == .unauthorized {
+                await AuthService.shared.handleUnauthorizedError()
+                return
+            }
+            
+            errorMessage = "Không thể đổi tên: \(error.localizedDescription)"
+            print("❌ Error renaming conversation: \(error)")
+        }
     }
 }
 

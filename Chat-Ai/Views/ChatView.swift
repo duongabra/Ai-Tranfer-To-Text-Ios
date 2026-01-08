@@ -22,6 +22,18 @@ struct ChatView: View {
     @State private var showingAudioPicker = false
     @State private var selectedFileData: Data?
     
+    // State để hiển thị confirmation dialog xóa chat
+    @State private var showingClearChatConfirmation = false
+    
+    // State để hiển thị confirmation dialog xóa conversation
+    @State private var showingDeleteConversationConfirmation = false
+    
+    // State để hiển thị rename sheet
+    @State private var showingRenameSheet = false
+    
+    // Environment để dismiss view
+    @Environment(\.dismiss) private var dismiss
+    
     /// Initializer
     init(conversation: Conversation) {
         self.conversation = conversation
@@ -57,8 +69,68 @@ struct ChatView: View {
             
             inputArea
         }
-        .navigationTitle(conversation.title)
+        .navigationTitle(viewModel.conversationTitle)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            // Menu với 3 options: Rename, Clear Chat và Delete Conversation
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    // Rename Conversation
+                    Button(action: {
+                        showingRenameSheet = true
+                    }) {
+                        Label("Rename", systemImage: "pencil")
+                    }
+                    
+                    Divider()
+                    
+                    // Clear Chat - Xóa messages, giữ conversation
+                    if !viewModel.messages.isEmpty {
+                        Button(role: .destructive, action: {
+                            showingClearChatConfirmation = true
+                        }) {
+                            Label("Clear Messages", systemImage: "eraser")
+                        }
+                    }
+                    
+                    // Delete Conversation - Xóa luôn conversation
+                    Button(role: .destructive, action: {
+                        showingDeleteConversationConfirmation = true
+                    }) {
+                        Label("Delete Conversation", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
+        }
+        // Confirmation dialog: Clear Messages
+        .confirmationDialog("Xóa tất cả tin nhắn?", isPresented: $showingClearChatConfirmation, titleVisibility: .visible) {
+            Button("Xóa tin nhắn", role: .destructive) {
+                Task {
+                    await viewModel.clearAllMessages()
+                }
+            }
+            Button("Hủy", role: .cancel) {}
+        } message: {
+            Text("Xóa tất cả tin nhắn nhưng giữ lại cuộc hội thoại.")
+        }
+        // Confirmation dialog: Delete Conversation
+        .confirmationDialog("Xóa cuộc hội thoại?", isPresented: $showingDeleteConversationConfirmation, titleVisibility: .visible) {
+            Button("Xóa", role: .destructive) {
+                Task {
+                    await viewModel.deleteConversation()
+                    dismiss() // Quay về list
+                }
+            }
+            Button("Hủy", role: .cancel) {}
+        } message: {
+            Text("Hành động này không thể hoàn tác. Cuộc hội thoại và tất cả tin nhắn sẽ bị xóa vĩnh viễn.")
+        }
+        // Sheet: Rename Conversation
+        .sheet(isPresented: $showingRenameSheet) {
+            RenameConversationSheet(viewModel: viewModel)
+        }
         .task {
             // Load messages khi view xuất hiện
             await viewModel.loadMessages()
@@ -76,14 +148,28 @@ struct ChatView: View {
                         MessageBubble(message: message)
                             .id(message.id) // ID để scroll đến message này
                     }
+                    
+                    // ✅ Typing indicator khi AI đang trả lời
+                    if viewModel.isSending {
+                        TypingIndicatorView()
+                            .id("typing") // ID để scroll đến typing indicator
+                    }
                 }
                 .padding()
             }
-            // Tự động scroll xuống message mới nhất
+            // Tự động scroll xuống message mới nhất hoặc typing indicator
             .onChange(of: viewModel.messages.count) { _, _ in
                 if let lastMessage = viewModel.messages.last {
                     withAnimation {
                         proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                    }
+                }
+            }
+            .onChange(of: viewModel.isSending) { _, isSending in
+                if isSending {
+                    // Scroll đến typing indicator khi bắt đầu gửi
+                    withAnimation {
+                        proxy.scrollTo("typing", anchor: .bottom)
                     }
                 }
             }
@@ -323,6 +409,57 @@ struct MessageBubble: View {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+}
+
+// MARK: - Rename Conversation Sheet
+
+/// Sheet để đổi tên conversation
+struct RenameConversationSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var viewModel: ChatViewModel
+    
+    @State private var newTitle: String
+    
+    init(viewModel: ChatViewModel) {
+        self.viewModel = viewModel
+        // ✅ Dùng conversationTitle (mới) thay vì conversation.title (cũ)
+        _newTitle = State(initialValue: viewModel.conversationTitle)
+    }
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Tên cuộc hội thoại", text: $newTitle)
+                } header: {
+                    Text("Đổi tên")
+                } footer: {
+                    Text("Nhập tên mới cho cuộc hội thoại này.")
+                }
+            }
+            .navigationTitle("Rename")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                // Nút Cancel
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Hủy") {
+                        dismiss()
+                    }
+                }
+                
+                // Nút Save
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Lưu") {
+                        Task {
+                            await viewModel.renameConversation(newTitle: newTitle)
+                            dismiss()
+                        }
+                    }
+                    .disabled(newTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
     }
 }
 

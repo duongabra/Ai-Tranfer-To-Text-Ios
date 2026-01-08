@@ -17,27 +17,48 @@ class ConversationListViewModel: ObservableObject {
     @Published var isLoading = false                   // Đang load dữ liệu?
     @Published var errorMessage: String?               // Thông báo lỗi (nếu có)
     
+    // ✅ Prevent multiple simultaneous loads
+    private var loadTask: Task<Void, Never>?
+    
     /// Load tất cả conversations từ database
     func loadConversations() async {
-        isLoading = true
-        errorMessage = nil
+        // ✅ Cancel previous task nếu đang chạy
+        loadTask?.cancel()
         
-        do {
-            // Gọi service để fetch data
-            conversations = try await SupabaseService.shared.fetchConversations()
-        } catch {
-            // ✅ Kiểm tra nếu là lỗi 401 Unauthorized → Logout
-            if let supabaseError = error as? SupabaseError, supabaseError == .unauthorized {
-                await AuthService.shared.handleUnauthorizedError()
+        // ✅ Tạo task mới
+        loadTask = Task {
+            // Skip nếu đang loading
+            guard !isLoading else {
+                print("⚠️ Already loading, skipping...")
                 return
             }
             
-            // Nếu có lỗi khác, lưu message để hiển thị
-            errorMessage = "Không thể tải danh sách: \(error.localizedDescription)"
-            print("❌ Error loading conversations: \(error)")
+            isLoading = true
+            errorMessage = nil
+            
+            do {
+                // Gọi service để fetch data
+                conversations = try await SupabaseService.shared.fetchConversations()
+                print("✅ Loaded \(conversations.count) conversations")
+            } catch is CancellationError {
+                // ⚠️ Task bị cancel (pull-to-refresh bị hủy) → Không hiển thị lỗi
+                print("⚠️ Load conversations cancelled")
+            } catch {
+                // ✅ Kiểm tra nếu là lỗi 401 Unauthorized → Logout
+                if let supabaseError = error as? SupabaseError, supabaseError == .unauthorized {
+                    await AuthService.shared.handleUnauthorizedError()
+                    return
+                }
+                
+                // Nếu có lỗi khác, lưu message để hiển thị
+                errorMessage = "Không thể tải danh sách: \(error.localizedDescription)"
+                print("❌ Error loading conversations: \(error)")
+            }
+            
+            isLoading = false
         }
         
-        isLoading = false
+        await loadTask?.value
     }
     
     /// Tạo conversation mới
@@ -79,6 +100,28 @@ class ConversationListViewModel: ObservableObject {
             
             errorMessage = "Không thể xóa: \(error.localizedDescription)"
             print("❌ Error deleting conversation: \(error)")
+        }
+    }
+    
+    /// Xóa tất cả conversations (1 lần)
+    func clearAllConversations() async {
+        do {
+            // Xóa tất cả conversations trong database (1 API call)
+            try await SupabaseService.shared.deleteAllConversations()
+            
+            // Clear local array
+            conversations.removeAll()
+            
+            print("✅ Cleared all conversations")
+        } catch {
+            // ✅ Kiểm tra nếu là lỗi 401 Unauthorized → Logout
+            if let supabaseError = error as? SupabaseError, supabaseError == .unauthorized {
+                await AuthService.shared.handleUnauthorizedError()
+                return
+            }
+            
+            errorMessage = "Không thể xóa: \(error.localizedDescription)"
+            print("❌ Error clearing all conversations: \(error)")
         }
     }
 }

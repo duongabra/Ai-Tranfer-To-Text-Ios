@@ -23,6 +23,9 @@ actor AuthService {
     @MainActor
     private var presentationContextProvider: WebAuthenticationPresentationContextProvider?
     
+    // ✅ Background timer để tự động refresh token
+    private var refreshTimer: Task<Void, Never>?
+    
     // MARK: - Google Sign In
     
     /// Sign in với Google (qua Supabase OAuth)
@@ -124,8 +127,8 @@ actor AuthService {
         // Lấy user info từ Supabase
         let user = try await fetchUserInfo(accessToken: token)
         
-        // Lưu session
-        await saveSession(user: user, accessToken: token)
+        // Lưu session (bao gồm cả refresh token)
+        await saveSession(user: user, accessToken: token, refreshToken: refreshToken)
         
         return user
     }
@@ -180,13 +183,18 @@ actor AuthService {
     
     /// Đăng xuất
     func signOut() async throws {
+        // ✅ Hủy background timer
+        stopAutoRefreshTimer()
+        
         // Clear session
         currentSession = nil
         
         // Clear UserDefaults
         UserDefaults.standard.removeObject(forKey: "userId")
         UserDefaults.standard.removeObject(forKey: "userEmail")
-        UserDefaults.standard.removeObject(forKey: "accessToken") // ✅ Xóa access token
+        UserDefaults.standard.removeObject(forKey: "accessToken")
+        UserDefaults.standard.removeObject(forKey: "refreshToken")
+        UserDefaults.standard.removeObject(forKey: "accessTokenExpirationDate")
         
         // Với OAuth, chỉ cần clear local session là đủ
         // Không cần gọi Supabase logout endpoint vì token sẽ tự expire
@@ -212,7 +220,7 @@ actor AuthService {
     }
     
     /// Lưu user session
-    func saveSession(user: User, accessToken: String) {
+    func saveSession(user: User, accessToken: String, refreshToken: String? = nil) {
         currentSession = AuthSession(
             user: user,
             accessToken: accessToken
@@ -221,7 +229,21 @@ actor AuthService {
         // Lưu vào UserDefaults
         UserDefaults.standard.set(user.id.uuidString, forKey: "userId")
         UserDefaults.standard.set(user.email, forKey: "userEmail")
-        UserDefaults.standard.set(accessToken, forKey: "accessToken") // ✅ Lưu access token
+        UserDefaults.standard.set(accessToken, forKey: "accessToken") // Lưu access token
+        
+        // Lưu refresh token (để tự động renew access token)
+        if let refreshToken = refreshToken {
+            UserDefaults.standard.set(refreshToken, forKey: "refreshToken")
+            print("✅ Saved refresh token")
+        }
+        
+        // ✅ Lưu thời gian hết hạn của access token (Supabase mặc định: 1 giờ)
+        let expirationDate = Date().addingTimeInterval(3600) // 1 hour from now
+        UserDefaults.standard.set(expirationDate, forKey: "accessTokenExpirationDate")
+        print("✅ Access token will expire at: \(expirationDate)")
+        
+        // ✅ Bắt đầu background timer để tự động refresh token
+        startAutoRefreshTimer()
     }
     
     /// Lấy access token hiện tại
@@ -233,6 +255,147 @@ actor AuthService {
         
         // Fallback: Lấy từ UserDefaults
         return UserDefaults.standard.string(forKey: "accessToken")
+    }
+    
+    // MARK: - Refresh Token
+    
+    /// Refresh access token khi hết hạn
+    /// - Returns: Access token mới
+    func refreshAccessToken() async throws -> String {
+        // Lấy refresh token từ UserDefaults
+        guard let refreshToken = UserDefaults.standard.string(forKey: "refreshToken") else {
+            print("❌ No refresh token found")
+            throw AuthError.sessionExpired
+        }
+        
+        // Gọi Supabase API để refresh token
+        guard let url = URL(string: "\(AppConfig.supabaseURL)/auth/v1/token?grant_type=refresh_token") else {
+            throw AuthError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(AppConfig.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Body: refresh_token
+        let body = ["refresh_token": refreshToken]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            print("❌ Refresh token failed")
+            throw AuthError.sessionExpired
+        }
+        
+        // Parse response
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let newAccessToken = json["access_token"] as? String,
+              let newRefreshToken = json["refresh_token"] as? String else {
+            throw AuthError.signInFailed
+        }
+        
+        // Lưu token mới
+        UserDefaults.standard.set(newAccessToken, forKey: "accessToken")
+        UserDefaults.standard.set(newRefreshToken, forKey: "refreshToken")
+        
+        // ✅ Cập nhật expiration date mới (1 giờ từ bây giờ)
+        let newExpirationDate = Date().addingTimeInterval(3600)
+        UserDefaults.standard.set(newExpirationDate, forKey: "accessTokenExpirationDate")
+        
+        print("✅ Access token refreshed successfully (expires at: \(newExpirationDate))")
+        return newAccessToken
+    }
+    
+    // MARK: - Auto Refresh Timer
+    
+    /// Bắt đầu background timer để tự động refresh token trước khi hết hạn
+    /// - Note: Timer sẽ kiểm tra và refresh token trước 5 phút khi sắp hết hạn
+    private func startAutoRefreshTimer() {
+        // Hủy timer cũ nếu có
+        stopAutoRefreshTimer()
+        
+        // Tạo timer mới
+        refreshTimer = Task {
+            while !Task.isCancelled {
+                // Đợi 5 phút trước khi check
+                try? await Task.sleep(nanoseconds: 5 * 60 * 1_000_000_000) // 5 minutes
+                
+                // Kiểm tra xem token có sắp hết hạn không
+                if shouldRefreshToken() {
+                    print("🔄 Token sắp hết hạn, đang refresh...")
+                    do {
+                        _ = try await refreshAccessToken()
+                        print("✅ Token đã được refresh tự động")
+                    } catch {
+                        print("❌ Lỗi khi refresh token tự động: \(error)")
+                        // Nếu refresh thất bại, dừng timer và yêu cầu user đăng nhập lại
+                        stopAutoRefreshTimer()
+                    }
+                }
+            }
+        }
+        
+        print("✅ Đã bắt đầu auto-refresh timer")
+    }
+    
+    /// Dừng background timer
+    private func stopAutoRefreshTimer() {
+        refreshTimer?.cancel()
+        refreshTimer = nil
+        print("✅ Đã dừng auto-refresh timer")
+    }
+    
+    /// Kiểm tra xem có nên refresh token không
+    /// - Returns: true nếu token sắp hết hạn (còn dưới 10 phút)
+    private func shouldRefreshToken() -> Bool {
+        guard let expirationDate = UserDefaults.standard.object(forKey: "accessTokenExpirationDate") as? Date else {
+            return false // Không có expiration date, không cần refresh
+        }
+        
+        // Refresh nếu còn dưới 10 phút
+        let timeUntilExpiration = expirationDate.timeIntervalSinceNow
+        return timeUntilExpiration < 600 // 10 minutes
+    }
+    
+    /// Kiểm tra và refresh token nếu cần (gọi khi app khởi động)
+    func checkAndRefreshTokenIfNeeded() async {
+        guard shouldRefreshToken() else {
+            print("✅ Token còn hạn, không cần refresh")
+            return
+        }
+        
+        print("🔄 Token sắp hết hạn, đang refresh...")
+        do {
+            _ = try await refreshAccessToken()
+            print("✅ Token đã được refresh")
+            // Bắt đầu timer sau khi refresh thành công
+            startAutoRefreshTimer()
+        } catch {
+            print("❌ Lỗi khi refresh token: \(error)")
+        }
+    }
+    
+    // MARK: - Handle Unauthorized Error
+    
+    /// Xử lý lỗi 401 Unauthorized (token hết hạn)
+    /// - Note: Tự động logout user và thông báo cần đăng nhập lại
+    func handleUnauthorizedError() async {
+        print("⚠️ Token hết hạn, đang logout user...")
+        do {
+            try await signOut()
+            
+            // ✅ Gửi notification để UI biết và update
+            await MainActor.run {
+                NotificationCenter.default.post(name: .userDidLogout, object: nil)
+            }
+            
+            print("✅ Đã logout user do token hết hạn")
+        } catch {
+            print("❌ Lỗi khi logout: \(error)")
+        }
     }
     
     // MARK: - Presentation Context Provider Helpers
@@ -293,5 +456,12 @@ class WebAuthenticationPresentationContextProvider: NSObject, ASWebAuthenticatio
         }
         return window
     }
+}
+
+// MARK: - Notification Names
+
+extension Notification.Name {
+    /// Notification khi user bị logout (do token hết hạn)
+    static let userDidLogout = Notification.Name("userDidLogout")
 }
 

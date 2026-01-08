@@ -18,6 +18,15 @@ class AuthViewModel: ObservableObject {
     init() {
         // Check xem user đã đăng nhập chưa khi app launch
         checkCurrentUser()
+        
+        // ✅ Lắng nghe notification khi user bị logout (do token hết hạn)
+        NotificationCenter.default.addObserver(
+            forName: .userDidLogout,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleForcedLogout()
+        }
     }
     
     // MARK: - Check Current User
@@ -80,6 +89,15 @@ class AuthViewModel: ObservableObject {
         }
         
         isLoading = false
+    }
+    
+    // MARK: - Handle Forced Logout
+    
+    /// Xử lý khi bị logout bắt buộc (do token hết hạn)
+    private func handleForcedLogout() {
+        currentUser = nil
+        errorMessage = "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
+        print("⚠️ User bị logout do token hết hạn")
     }
 }
 

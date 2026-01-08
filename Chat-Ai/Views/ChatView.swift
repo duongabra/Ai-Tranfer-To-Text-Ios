@@ -17,6 +17,11 @@ struct ChatView: View {
     // State để focus vào text field
     @FocusState private var isInputFocused: Bool
     
+    // ✅ State cho file picker
+    @State private var showingImagePicker = false
+    @State private var showingAudioPicker = false
+    @State private var selectedFileData: Data?
+    
     /// Initializer
     init(conversation: Conversation) {
         self.conversation = conversation
@@ -138,45 +143,135 @@ struct ChatView: View {
     
     /// Vùng nhập tin nhắn
     private var inputArea: some View {
-        HStack(alignment: .bottom, spacing: 12) {
-            // Text field để nhập message
-            TextField("Nhập tin nhắn...", text: $viewModel.inputText, axis: .vertical)
-                .textFieldStyle(.plain)
-                .padding(12)
-                .background(Color(.systemGray6))
-                .cornerRadius(20)
-                .focused($isInputFocused)
-                .lineLimit(1...5) // Tối đa 5 dòng
-                .disabled(viewModel.isSending) // Disable khi đang gửi
+        VStack(spacing: 0) {
+            // ✅ File preview (nếu có file được chọn)
+            if let selectedFile = viewModel.selectedFile {
+                filePreviewBanner(file: selectedFile)
+            }
             
-            // Nút gửi
-            Button(action: {
-                Task {
-                    await viewModel.sendMessage()
-                }
-            }) {
-                ZStack {
-                    Circle()
-                        .fill(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.gray : Color.blue)
-                        .frame(width: 40, height: 40)
+            HStack(alignment: .bottom, spacing: 12) {
+                // ✅ Nút attach file
+                Menu {
+                    Button(action: {
+                        showingImagePicker = true
+                    }) {
+                        Label("Photo & Video", systemImage: "photo")
+                    }
                     
-                    if viewModel.isSending {
-                        // Hiển thị loading khi đang gửi
-                        ProgressView()
-                            .tint(.white)
-                    } else {
-                        // Icon gửi
-                        Image(systemName: "arrow.up")
-                            .foregroundColor(.white)
-                            .fontWeight(.semibold)
+                    Button(action: {
+                        showingAudioPicker = true
+                    }) {
+                        Label("Audio", systemImage: "waveform")
+                    }
+                } label: {
+                    Image(systemName: "paperclip")
+                        .font(.title3)
+                        .foregroundColor(.blue)
+                        .frame(width: 40, height: 40)
+                }
+                .disabled(viewModel.isSending)
+                
+                // Text field để nhập message
+                TextField("Nhập tin nhắn...", text: $viewModel.inputText, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .padding(12)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(20)
+                    .focused($isInputFocused)
+                    .lineLimit(1...5) // Tối đa 5 dòng
+                    .disabled(viewModel.isSending) // Disable khi đang gửi
+                
+                // Nút gửi
+                Button(action: {
+                    Task {
+                        // Nếu có file → Gửi file
+                        if let selectedFile = viewModel.selectedFile,
+                           let fileData = selectedFileData {
+                            await viewModel.sendMessageWithFile(
+                                data: fileData,
+                                fileName: selectedFile.name,
+                                fileType: selectedFile.type
+                            )
+                            selectedFileData = nil
+                        } else {
+                            // Không có file → Gửi text thường
+                            await viewModel.sendMessage()
+                        }
+                    }
+                }) {
+                    ZStack {
+                        Circle()
+                            .fill(canSendMessage ? Color.blue : Color.gray)
+                            .frame(width: 40, height: 40)
+                        
+                        if viewModel.isSending {
+                            // Hiển thị loading khi đang gửi
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            // Icon gửi
+                            Image(systemName: "arrow.up")
+                                .foregroundColor(.white)
+                                .fontWeight(.semibold)
+                        }
                     }
                 }
+                .disabled(!canSendMessage || viewModel.isSending)
             }
-            .disabled(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isSending)
+            .padding(.horizontal)
+            .padding(.vertical, 8)
         }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
         .background(Color(.systemBackground))
+        .sheet(isPresented: $showingImagePicker) {
+            FilePicker(
+                selectedFile: $viewModel.selectedFile,
+                selectedData: $selectedFileData,
+                fileTypes: [.image, .video]
+            )
+        }
+        .sheet(isPresented: $showingAudioPicker) {
+            AudioPicker(
+                selectedFile: $viewModel.selectedFile,
+                selectedData: $selectedFileData
+            )
+        }
+    }
+    
+    // ✅ Helper: Kiểm tra có thể gửi message không
+    private var canSendMessage: Bool {
+        // Có file hoặc có text
+        return viewModel.selectedFile != nil || !viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+    
+    // ✅ File preview banner
+    private func filePreviewBanner(file: FileAttachment) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: file.type.icon)
+                .font(.title2)
+                .foregroundColor(.blue)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(file.name)
+                    .font(.subheadline)
+                    .lineLimit(1)
+                
+                Text(file.formattedSize)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            Button(action: {
+                viewModel.cancelFileSelection()
+                selectedFileData = nil
+            }) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundColor(.gray)
+            }
+        }
+        .padding()
+        .background(Color.blue.opacity(0.1))
     }
 }
 
@@ -194,12 +289,21 @@ struct MessageBubble: View {
             }
             
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
-                // Nội dung message
-                Text(message.content)
-                    .padding(12)
-                    .background(message.role == .user ? Color.blue : Color(.systemGray5))
-                    .foregroundColor(message.role == .user ? .white : .primary)
-                    .cornerRadius(16)
+                VStack(alignment: .leading, spacing: 8) {
+                    // ✅ File attachment (nếu có)
+                    if let attachment = message.attachment {
+                        FileAttachmentView(attachment: attachment)
+                    }
+                    
+                    // Nội dung message (nếu không phải chỉ có file)
+                    if !message.content.isEmpty && message.content != "📎 Sent a file" {
+                        Text(message.content)
+                            .padding(12)
+                            .background(message.role == .user ? Color.blue : Color(.systemGray5))
+                            .foregroundColor(message.role == .user ? .white : .primary)
+                            .cornerRadius(16)
+                    }
+                }
                 
                 // Thời gian
                 Text(formatTime(message.createdAt))

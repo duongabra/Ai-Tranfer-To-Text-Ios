@@ -16,6 +16,10 @@ class ChatViewModel: ObservableObject {
     @Published var isSending = false               // Đang gửi message?
     @Published var errorMessage: String?           // Thông báo lỗi
     
+    // ✅ File attachment
+    @Published var selectedFile: FileAttachment?   // File đã chọn (chưa gửi)
+    @Published var isUploadingFile = false         // Đang upload file?
+    
     let conversation: Conversation                 // Conversation hiện tại
     
     /// Initializer
@@ -32,6 +36,12 @@ class ChatViewModel: ObservableObject {
         do {
             messages = try await SupabaseService.shared.fetchMessages(conversationId: conversation.id)
         } catch {
+            // ✅ Kiểm tra nếu là lỗi 401 Unauthorized → Logout
+            if let supabaseError = error as? SupabaseError, supabaseError == .unauthorized {
+                await AuthService.shared.handleUnauthorizedError()
+                return
+            }
+            
             errorMessage = "Không thể tải tin nhắn: \(error.localizedDescription)"
             print("❌ Error loading messages: \(error)")
         }
@@ -81,12 +91,122 @@ class ChatViewModel: ObservableObject {
             // Lỗi đặc biệt: chưa có API key
             errorMessage = error.localizedDescription
         } catch {
+            // ✅ Kiểm tra nếu là lỗi 401 Unauthorized → Logout
+            if let supabaseError = error as? SupabaseError, supabaseError == .unauthorized {
+                await AuthService.shared.handleUnauthorizedError()
+                return
+            }
+            
             // Các lỗi khác
             errorMessage = "Không thể gửi tin nhắn: \(error.localizedDescription)"
             print("❌ Error sending message: \(error)")
         }
         
         isSending = false
+    }
+    
+    // MARK: - File Attachment
+    
+    /// Upload file và gửi message có file đính kèm
+    /// - Parameters:
+    ///   - data: Data của file
+    ///   - fileName: Tên file
+    ///   - fileType: Loại file
+    func sendMessageWithFile(data: Data, fileName: String, fileType: FileAttachment.FileType) async {
+        isSending = true
+        isUploadingFile = true
+        errorMessage = nil
+        
+        do {
+            // Bước 1: Upload file lên Supabase Storage
+            let fileURL = try await StorageService.shared.uploadFile(
+                data: data,
+                fileName: fileName,
+                fileType: fileType
+            )
+            
+            isUploadingFile = false
+            
+            // Bước 2: Tạo message với file attachment
+            let messageContent = inputText.isEmpty ? "📎 Sent a file" : inputText
+            inputText = "" // Clear input
+            
+            let userMessage = try await SupabaseService.shared.createMessage(
+                conversationId: conversation.id,
+                role: .user,
+                content: messageContent,
+                fileUrl: fileURL,
+                fileName: fileName,
+                fileType: fileType.rawValue,
+                fileSize: data.count
+            )
+            
+            // Thêm message vào danh sách
+            messages.append(userMessage)
+            
+            // Clear selected file
+            selectedFile = nil
+            
+            // Bước 3: Gửi đến AI
+            // ✅ Nếu có ảnh → Dùng Gemini (hỗ trợ vision)
+            let aiResponse: String
+            
+            if fileType == .image {
+                // Gửi ảnh + text đến Gemini
+                let prompt = messageContent == "📎 Sent a file" ? "Hãy mô tả ảnh này chi tiết" : messageContent
+                aiResponse = try await GeminiService.shared.sendMessageWithImage(
+                    text: prompt,
+                    imageData: data
+                )
+            } else if !messageContent.isEmpty && messageContent != "📎 Sent a file" {
+                // Chỉ có text → Dùng AI service thường
+                aiResponse = try await AIService.shared.sendMessage(messages: messages)
+            } else {
+                // Video/Audio không có text → Không gửi AI
+                isSending = false
+                isUploadingFile = false
+                return
+            }
+            
+            // Lưu AI response
+            let assistantMessage = try await SupabaseService.shared.createMessage(
+                conversationId: conversation.id,
+                role: .assistant,
+                content: aiResponse
+            )
+            
+            messages.append(assistantMessage)
+            
+            // Bước 4: Cập nhật timestamp
+            try await SupabaseService.shared.updateConversationTimestamp(conversationId: conversation.id)
+            
+        } catch let error as StorageError {
+            errorMessage = error.localizedDescription
+            print("❌ Storage error: \(error)")
+        } catch {
+            // ✅ Kiểm tra nếu là lỗi 401 Unauthorized → Logout
+            if let supabaseError = error as? SupabaseError, supabaseError == .unauthorized {
+                await AuthService.shared.handleUnauthorizedError()
+                return
+            }
+            
+            errorMessage = "Không thể gửi file: \(error.localizedDescription)"
+            print("❌ Error sending file: \(error)")
+        }
+        
+        isSending = false
+        isUploadingFile = false
+    }
+    
+    /// Chọn file để gửi (preview trước khi gửi)
+    /// - Parameter attachment: File attachment
+    func selectFile(_ attachment: FileAttachment) {
+        selectedFile = attachment
+    }
+    
+    /// Hủy file đã chọn
+    func cancelFileSelection() {
+        selectedFile = nil
     }
 }
 

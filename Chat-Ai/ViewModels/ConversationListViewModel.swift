@@ -26,7 +26,13 @@ class ConversationListViewModel: ObservableObject {
             // Gọi service để fetch data
             conversations = try await SupabaseService.shared.fetchConversations()
         } catch {
-            // Nếu có lỗi, lưu message để hiển thị
+            // ✅ Kiểm tra nếu là lỗi 401 Unauthorized → Logout
+            if let supabaseError = error as? SupabaseError, supabaseError == .unauthorized {
+                await AuthService.shared.handleUnauthorizedError()
+                return
+            }
+            
+            // Nếu có lỗi khác, lưu message để hiển thị
             errorMessage = "Không thể tải danh sách: \(error.localizedDescription)"
             print("❌ Error loading conversations: \(error)")
         }
@@ -44,6 +50,12 @@ class ConversationListViewModel: ObservableObject {
             // Thêm vào đầu danh sách (conversation mới nhất)
             conversations.insert(newConversation, at: 0)
         } catch {
+            // ✅ Kiểm tra nếu là lỗi 401 Unauthorized → Logout
+            if let supabaseError = error as? SupabaseError, supabaseError == .unauthorized {
+                await AuthService.shared.handleUnauthorizedError()
+                return
+            }
+            
             errorMessage = "Không thể tạo cuộc hội thoại: \(error.localizedDescription)"
             print("❌ Error creating conversation: \(error)")
         }
@@ -59,6 +71,12 @@ class ConversationListViewModel: ObservableObject {
             // Xóa khỏi danh sách local
             conversations.removeAll { $0.id == conversation.id }
         } catch {
+            // ✅ Kiểm tra nếu là lỗi 401 Unauthorized → Logout
+            if let supabaseError = error as? SupabaseError, supabaseError == .unauthorized {
+                await AuthService.shared.handleUnauthorizedError()
+                return
+            }
+            
             errorMessage = "Không thể xóa: \(error.localizedDescription)"
             print("❌ Error deleting conversation: \(error)")
         }

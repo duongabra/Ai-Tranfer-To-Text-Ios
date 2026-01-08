@@ -27,6 +27,10 @@ struct Chat_AiApp: App {
                 // Đã đăng nhập → Hiển thị app chính
                 ContentView()
                     .environmentObject(authViewModel)
+                    .task {
+                        // ✅ Kiểm tra và refresh token khi app khởi động
+                        await AuthService.shared.checkAndRefreshTokenIfNeeded()
+                    }
             } else {
                 // Chưa đăng nhập → Hiển thị màn hình login
                 LoginView()

@@ -18,13 +18,14 @@ actor SupabaseService {
     // MARK: - Helper Methods
     
     /// Tạo authenticated request với access token
+    /// - Note: Token được tự động refresh bởi AuthService (background task), không cần check mỗi request
     private func createAuthenticatedRequest(url: URL, method: String) async throws -> URLRequest {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue(AppConfig.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        // Lấy access token từ AuthService
+        // Lấy access token từ AuthService (đã được auto-refresh bởi background task)
         if let accessToken = await AuthService.shared.getAccessToken() {
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         } else {
@@ -53,8 +54,17 @@ actor SupabaseService {
         let (data, response) = try await URLSession.shared.data(for: request)
         
         // Kiểm tra response có thành công không (status code 200-299)
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SupabaseError.requestFailed
+        }
+        
+        // ✅ Kiểm tra 401 Unauthorized → Token hết hạn
+        if httpResponse.statusCode == 401 {
+            print("❌ 401 Unauthorized - Token hết hạn")
+            throw SupabaseError.unauthorized
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
             throw SupabaseError.requestFailed
         }
         
@@ -96,14 +106,21 @@ actor SupabaseService {
         // Gọi API
         let (data, response) = try await URLSession.shared.data(for: request)
         
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SupabaseError.requestFailed
+        }
+        
+        // ✅ Kiểm tra 401 Unauthorized → Token hết hạn
+        if httpResponse.statusCode == 401 {
+            print("❌ 401 Unauthorized - Token hết hạn")
+            throw SupabaseError.unauthorized
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
             // Debug: In ra lỗi chi tiết
-            if let httpResponse = response as? HTTPURLResponse {
-                print("❌ Supabase Error - Status Code: \(httpResponse.statusCode)")
-                if let errorString = String(data: data, encoding: .utf8) {
-                    print("❌ Error Response: \(errorString)")
-                }
+            print("❌ Supabase Error - Status Code: \(httpResponse.statusCode)")
+            if let errorString = String(data: data, encoding: .utf8) {
+                print("❌ Error Response: \(errorString)")
             }
             throw SupabaseError.requestFailed
         }
@@ -130,10 +147,19 @@ actor SupabaseService {
         // Tạo authenticated DELETE request
         let request = try await createAuthenticatedRequest(url: url, method: "DELETE")
         
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
         
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SupabaseError.requestFailed
+        }
+        
+        // ✅ Kiểm tra 401 Unauthorized → Token hết hạn
+        if httpResponse.statusCode == 401 {
+            print("❌ 401 Unauthorized - Token hết hạn")
+            throw SupabaseError.unauthorized
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
             throw SupabaseError.requestFailed
         }
     }
@@ -153,8 +179,17 @@ actor SupabaseService {
         
         let (data, response) = try await URLSession.shared.data(for: request)
         
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SupabaseError.requestFailed
+        }
+        
+        // ✅ Kiểm tra 401 Unauthorized → Token hết hạn
+        if httpResponse.statusCode == 401 {
+            print("❌ 401 Unauthorized - Token hết hạn")
+            throw SupabaseError.unauthorized
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
             throw SupabaseError.requestFailed
         }
         
@@ -170,12 +205,28 @@ actor SupabaseService {
     ///   - conversationId: ID của conversation chứa message
     ///   - role: Vai trò (user hoặc assistant)
     ///   - content: Nội dung message
+    ///   - fileUrl: URL của file đính kèm (optional)
+    ///   - fileName: Tên file (optional)
+    ///   - fileType: Loại file (optional)
+    ///   - fileSize: Kích thước file (optional)
     /// - Returns: Message vừa tạo
-    func createMessage(conversationId: UUID, role: Message.MessageRole, content: String) async throws -> Message {
+    func createMessage(
+        conversationId: UUID,
+        role: Message.MessageRole,
+        content: String,
+        fileUrl: String? = nil,
+        fileName: String? = nil,
+        fileType: String? = nil,
+        fileSize: Int? = nil
+    ) async throws -> Message {
         let newMessage = Message(
             conversationId: conversationId,
             role: role,
-            content: content
+            content: content,
+            fileUrl: fileUrl,
+            fileName: fileName,
+            fileType: fileType,
+            fileSize: fileSize
         )
         
         guard let url = URL(string: "\(AppConfig.supabaseURL)/rest/v1/messages") else {
@@ -193,8 +244,17 @@ actor SupabaseService {
         
         let (data, response) = try await URLSession.shared.data(for: request)
         
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SupabaseError.requestFailed
+        }
+        
+        // ✅ Kiểm tra 401 Unauthorized → Token hết hạn
+        if httpResponse.statusCode == 401 {
+            print("❌ 401 Unauthorized - Token hết hạn")
+            throw SupabaseError.unauthorized
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
             throw SupabaseError.requestFailed
         }
         
@@ -242,10 +302,11 @@ actor SupabaseService {
 // MARK: - Error Types
 
 /// Các loại lỗi có thể xảy ra khi làm việc với Supabase
-enum SupabaseError: LocalizedError {
+enum SupabaseError: LocalizedError, Equatable {
     case invalidURL          // URL không hợp lệ
     case requestFailed       // Request thất bại (lỗi network hoặc server)
     case decodingFailed      // Không parse được JSON
+    case unauthorized        // Token hết hạn hoặc không hợp lệ (401)
     
     var errorDescription: String? {
         switch self {
@@ -255,6 +316,8 @@ enum SupabaseError: LocalizedError {
             return "Không thể kết nối đến server"
         case .decodingFailed:
             return "Không thể đọc dữ liệu từ server"
+        case .unauthorized:
+            return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
         }
     }
 }

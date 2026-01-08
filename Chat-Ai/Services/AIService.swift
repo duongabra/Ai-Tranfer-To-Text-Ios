@@ -2,7 +2,7 @@
 //  AIService.swift
 //  Chat-Ai
 //
-//  Service để gọi API AI (Groq hoặc OpenAI)
+//  Service để gọi API AI (Gemini, Groq hoặc OpenAI)
 //
 
 import Foundation
@@ -17,19 +17,19 @@ actor AIService {
     /// Gửi tin nhắn đến AI và nhận phản hồi
     /// - Parameter messages: Mảng các message trong conversation (để AI có context)
     /// - Returns: Nội dung phản hồi từ AI
-    func sendMessage(messages: [Message]) async throws -> String {
+    func sendMessage(messages: [Message], image: Data? = nil) async throws -> String {
         // Kiểm tra xem đã có API key chưa
         guard !AppConfig.aiAPIKey.isEmpty else {
             throw AIError.missingAPIKey
         }
         
-        // Chọn provider (Groq hoặc OpenAI)
-        switch AppConfig.aiProvider {
-        case .groq:
-            return try await sendToGroq(messages: messages)
-        case .openai:
-            return try await sendToOpenAI(messages: messages)
+        // ⚠️ Groq không hỗ trợ xử lý ảnh
+        if image != nil {
+            throw AIError.imageNotSupported
         }
+        
+        // ✅ Dùng Groq (chỉ hỗ trợ text)
+        return try await sendToGroq(messages: messages)
     }
     
     // MARK: - Groq API
@@ -164,6 +164,7 @@ enum AIError: LocalizedError {
     case invalidURL          // URL không hợp lệ
     case requestFailed       // Request thất bại
     case invalidResponse     // Response không đúng format
+    case imageNotSupported   // Không hỗ trợ xử lý ảnh
     
     var errorDescription: String? {
         switch self {
@@ -175,6 +176,8 @@ enum AIError: LocalizedError {
             return "Không thể kết nối đến AI service"
         case .invalidResponse:
             return "Phản hồi từ AI không hợp lệ"
+        case .imageNotSupported:
+            return "⚠️ Groq không hỗ trợ xử lý ảnh. Vui lòng chỉ gửi text."
         }
     }
 }

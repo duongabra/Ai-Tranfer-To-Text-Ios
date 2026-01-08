@@ -140,10 +140,51 @@ struct PaywallView: View {
         isLoading = true
         errorMessage = nil
         
+        // Detect Simulator vs Real Device
+        #if targetEnvironment(simulator)
+        // SIMULATOR: Dùng StoreKit 2 thuần
+        print("📱 Running on Simulator - Using StoreKit 2")
+        do {
+            // Bước 1: Lấy danh sách plans
+            availablePlans = try await StoreKitService.shared.getAvailablePlans()
+            
+            // Bước 2: Check xem user đã mua gói nào chưa
+            let currentProductId = await StoreKitService.shared.getCurrentSubscriptionProductId()
+            print("📱 Current subscription: \(currentProductId ?? "none")")
+            
+            // Bước 3: Đánh dấu gói đang active
+            availablePlans = availablePlans.map { plan in
+                var updatedPlan = plan
+                // So sánh product ID của plan với product ID đang active
+                updatedPlan.isCurrentPlan = (plan.type.rawValue == currentProductId)
+                return updatedPlan
+            }
+            
+            // Auto-select Monthly (nếu chưa mua)
+            if currentProductId == nil {
+                selectedPlan = availablePlans.first(where: { $0.type == .monthly })
+            } else {
+                // Nếu đã mua rồi, chọn gói khác (để upgrade/downgrade)
+                selectedPlan = availablePlans.first(where: { !$0.isCurrentPlan && $0.isPremium })
+            }
+            
+            isLoading = false
+        } catch {
+            print("❌ StoreKit error: \(error)")
+            errorMessage = "Failed to load plans: \(error.localizedDescription)"
+            isLoading = false
+        }
+        #else
+        // REAL DEVICE: Dùng RevenueCat
+        print("📱 Running on Real Device - Using RevenueCat")
         do {
             availablePlans = try await RevenueCatService.shared.getAvailablePlans()
             
-            // Auto-select Monthly plan nếu có
+            // Check current subscription từ RevenueCat
+            let hasActiveSubscription = await RevenueCatService.shared.hasActiveSubscription()
+            print("📱 Has active subscription: \(hasActiveSubscription)")
+            
+            // Auto-select Monthly
             if let monthlyPlan = availablePlans.first(where: { $0.type == .monthly }) {
                 selectedPlan = monthlyPlan
             } else if let firstPremiumPlan = availablePlans.first(where: { $0.isPremium }) {
@@ -152,17 +193,17 @@ struct PaywallView: View {
             
             isLoading = false
         } catch {
+            print("❌ RevenueCat error: \(error)")
             errorMessage = "Failed to load plans: \(error.localizedDescription)"
             isLoading = false
-            print("❌ Error loading plans: \(error)")
         }
+        #endif
     }
     
     // MARK: - Subscribe Action
     
     private func subscribeToPlan() {
-        guard let selectedPlan = selectedPlan,
-              let package = selectedPlan.package else {
+        guard let selectedPlan = selectedPlan else {
             errorMessage = "Please select a plan"
             return
         }
@@ -172,8 +213,23 @@ struct PaywallView: View {
         
         Task {
             do {
-                // Mua package
+                #if targetEnvironment(simulator)
+                // SIMULATOR: Dùng StoreKit 2
+                guard let product = selectedPlan.storeKitProduct else {
+                    errorMessage = "Product not available"
+                    isLoading = false
+                    return
+                }
+                try await StoreKitService.shared.purchase(product: product)
+                #else
+                // REAL DEVICE: Dùng RevenueCat
+                guard let package = selectedPlan.package else {
+                    errorMessage = "Package not available"
+                    isLoading = false
+                    return
+                }
                 _ = try await RevenueCatService.shared.purchase(package: package)
+                #endif
                 
                 // Thành công!
                 print("✅ Subscription successful!")
@@ -225,7 +281,20 @@ struct PlanCard: View {
                         Text(plan.title)
                             .font(.headline)
                         
-                        if plan.type == .monthly {
+                        // Tag "CURRENT PLAN" nếu đang dùng gói này
+                        if plan.isCurrentPlan {
+                            Text("CURRENT PLAN")
+                                .font(.caption2)
+                                .fontWeight(.bold)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.blue)
+                                .foregroundColor(.white)
+                                .cornerRadius(4)
+                        }
+                        
+                        // Tag "BEST VALUE" cho Monthly
+                        if plan.type == .monthly && !plan.isCurrentPlan {
                             Text("BEST VALUE")
                                 .font(.caption2)
                                 .fontWeight(.bold)
@@ -263,6 +332,9 @@ struct PlanCard: View {
             )
         }
         .buttonStyle(PlainButtonStyle())
+        // Disable button nếu đang là current plan
+        .disabled(plan.isCurrentPlan)
+        .opacity(plan.isCurrentPlan ? 0.6 : 1.0)
     }
 }
 

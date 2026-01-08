@@ -7,6 +7,7 @@
 
 import Foundation
 import RevenueCat
+import StoreKit
 
 // MARK: - SubscriptionPlan
 
@@ -15,6 +16,8 @@ struct SubscriptionPlan: Identifiable {
     let id: String
     let type: PlanType
     var package: Package? // RevenueCat Package (chứa thông tin giá thật)
+    var storeKitProduct: Product? // StoreKit 2 Product (cho Simulator)
+    var isCurrentPlan: Bool = false // Có phải gói đang active không?
     
     // MARK: - PlanType
     
@@ -26,16 +29,29 @@ struct SubscriptionPlan: Identifiable {
     
     // MARK: - Initializers
     
-    init(type: PlanType, package: Package? = nil) {
+    init(type: PlanType, package: Package? = nil, storeKitProduct: Product? = nil, isCurrentPlan: Bool = false) {
         self.id = type.rawValue
         self.type = type
         self.package = package
+        self.storeKitProduct = storeKitProduct
+        self.isCurrentPlan = isCurrentPlan
     }
     
     // MARK: - Display Information
     
     /// Tên hiển thị của gói
     var title: String {
+        // Ưu tiên: Lấy từ StoreKit Product
+        if let product = storeKitProduct {
+            return product.displayName
+        }
+        
+        // Thứ hai: Lấy từ RevenueCat Package
+        if let package = package {
+            return package.storeProduct.localizedTitle
+        }
+        
+        // Fallback
         switch type {
         case .free:
             return "Free"
@@ -48,6 +64,17 @@ struct SubscriptionPlan: Identifiable {
     
     /// Mô tả gói
     var description: String {
+        // Ưu tiên: Lấy từ StoreKit Product
+        if let product = storeKitProduct {
+            return product.description
+        }
+        
+        // Thứ hai: Lấy từ RevenueCat Package
+        if let package = package {
+            return package.storeProduct.localizedDescription
+        }
+        
+        // Fallback
         switch type {
         case .free:
             return "10 messages per day"
@@ -58,10 +85,16 @@ struct SubscriptionPlan: Identifiable {
         }
     }
     
-    /// Giá hiển thị (lấy từ RevenueCat nếu có, fallback về giá mặc định)
+    /// Giá hiển thị (lấy từ RevenueCat hoặc StoreKit nếu có, fallback về giá mặc định)
     var price: String {
+        // Ưu tiên: RevenueCat Package (thiết bị thật)
         if let package = package {
             return package.storeProduct.localizedPriceString
+        }
+        
+        // Thứ hai: StoreKit Product (Simulator)
+        if let product = storeKitProduct {
+            return product.displayPrice
         }
         
         // Fallback giá mặc định nếu chưa có package
@@ -77,6 +110,19 @@ struct SubscriptionPlan: Identifiable {
     
     /// Duration hiển thị
     var duration: String {
+        // Ưu tiên: Lấy từ StoreKit Product
+        if let product = storeKitProduct,
+           let subscription = product.subscription {
+            return "per \(subscription.subscriptionPeriod.unit.localizedString)"
+        }
+        
+        // Thứ hai: Lấy từ RevenueCat Package
+        if let package = package,
+           let subscriptionPeriod = package.storeProduct.subscriptionPeriod {
+            return "per \(subscriptionPeriod.unit.localizedString)"
+        }
+        
+        // Fallback
         switch type {
         case .free:
             return ""
@@ -142,6 +188,44 @@ struct SubscriptionPlan: Identifiable {
     /// Có phải gói premium không?
     var isPremium: Bool {
         return type != .free
+    }
+}
+
+// MARK: - Product.SubscriptionPeriod.Unit Extension
+
+extension Product.SubscriptionPeriod.Unit {
+    var localizedString: String {
+        switch self {
+        case .day:
+            return "day"
+        case .week:
+            return "week"
+        case .month:
+            return "month"
+        case .year:
+            return "year"
+        @unknown default:
+            return "period"
+        }
+    }
+}
+
+// MARK: - RevenueCat SubscriptionPeriod.Unit Extension
+
+extension SubscriptionPeriod.Unit {
+    var localizedString: String {
+        switch self {
+        case .day:
+            return "day"
+        case .week:
+            return "week"
+        case .month:
+            return "month"
+        case .year:
+            return "year"
+        @unknown default:
+            return "period"
+        }
     }
 }
 

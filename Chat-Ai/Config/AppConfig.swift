@@ -44,6 +44,10 @@ struct AppConfig {
     
     static let aiAPIKey = infoPlistValue(for: "AI_API_KEY")
     
+    // MARK: - Transcribe API Configuration
+    
+    static let transcribeAPIURL = infoPlistValue(for: "TRANSCRIBE_API_URL")
+    
     // MARK: - RevenueCat Configuration
     
     static let revenueCatAPIKey = infoPlistValue(for: "REVENUECAT_API_KEY")

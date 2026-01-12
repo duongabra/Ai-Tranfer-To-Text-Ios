@@ -41,7 +41,8 @@ struct FileAttachmentView: View {
             .cornerRadius(8)
         }
         .onTapGesture {
-            if attachment.isImage || attachment.isVideo {
+            // ✅ Chỉ image mới mở fullscreen, audio/video play inline
+            if attachment.isImage {
                 isShowingFullScreen = true
             }
         }
@@ -92,52 +93,16 @@ struct FileAttachmentView: View {
         }
     }
     
-    // MARK: - Video Thumbnail View
+    // MARK: - Video Player View (Inline)
     
     private var videoThumbnailView: some View {
-        ZStack {
-            Rectangle()
-                .fill(Color.black.opacity(0.1))
-                .frame(maxWidth: 250)
-                .frame(height: 200)
-                .cornerRadius(12)
-            
-            VStack(spacing: 8) {
-                Image(systemName: "play.circle.fill")
-                    .font(.system(size: 50))
-                    .foregroundColor(.white)
-                
-                Text("Video")
-                    .font(.caption)
-                    .foregroundColor(.white)
-            }
-        }
+        InlineVideoPlayer(url: URL(string: attachment.url))
     }
     
-    // MARK: - Audio Player View
+    // MARK: - Audio Player View (Inline)
     
     private var audioPlayerView: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "waveform.circle.fill")
-                .font(.system(size: 40))
-                .foregroundColor(.blue)
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Audio File")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                
-                Text("Tap to play")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            
-            Spacer()
-        }
-        .padding()
-        .background(Color.gray.opacity(0.1))
-        .cornerRadius(12)
-        .frame(maxWidth: 250)
+        InlineAudioPlayer(url: URL(string: attachment.url), fileName: attachment.name)
     }
     
     // MARK: - Generic File View
@@ -173,6 +138,7 @@ struct FullScreenMediaView: View {
     
     let attachment: FileAttachment
     @Environment(\.dismiss) var dismiss
+    @State private var player: AVPlayer?
     
     var body: some View {
         NavigationView {
@@ -180,6 +146,7 @@ struct FullScreenMediaView: View {
                 Color.black.ignoresSafeArea()
                 
                 if attachment.isImage {
+                    // ✅ Image viewer
                     AsyncImage(url: URL(string: attachment.url)) { phase in
                         switch phase {
                         case .success(let image):
@@ -187,32 +154,82 @@ struct FullScreenMediaView: View {
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
                         case .failure:
-                            Text("Failed to load image")
-                                .foregroundColor(.white)
+                            VStack(spacing: 12) {
+                                Image(systemName: "exclamationmark.triangle")
+                                    .font(.largeTitle)
+                                Text("Failed to load image")
+                            }
+                            .foregroundColor(.white)
                         case .empty:
                             ProgressView()
+                                .tint(.white)
                         @unknown default:
                             EmptyView()
                         }
                     }
                 } else if attachment.isVideo {
+                    // ✅ Video player
                     if let url = URL(string: attachment.url) {
                         VideoPlayer(player: AVPlayer(url: url))
+                            .onAppear {
+                                player = AVPlayer(url: url)
+                            }
+                            .onDisappear {
+                                player?.pause()
+                                player = nil
+                            }
+                    } else {
+                        Text("Invalid video URL")
+                            .foregroundColor(.white)
                     }
                 } else if attachment.isAudio {
-                    if let url = URL(string: attachment.url) {
-                        VideoPlayer(player: AVPlayer(url: url))
-                            .frame(height: 100)
+                    // ✅ Audio player với UI đẹp hơn
+                    VStack(spacing: 24) {
+                        // Audio icon
+                        Image(systemName: "music.note.list")
+                            .font(.system(size: 80))
+                            .foregroundColor(.white)
+                        
+                        // File name
+                        Text(attachment.name)
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                        
+                        // Audio player
+                        if let url = URL(string: attachment.url) {
+                            VideoPlayer(player: AVPlayer(url: url))
+                                .frame(height: 60)
+                                .cornerRadius(12)
+                                .padding(.horizontal, 40)
+                                .onAppear {
+                                    player = AVPlayer(url: url)
+                                }
+                                .onDisappear {
+                                    player?.pause()
+                                    player = nil
+                                }
+                        } else {
+                            Text("Invalid audio URL")
+                                .foregroundColor(.white.opacity(0.7))
+                        }
                     }
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Close") {
+                    Button {
+                        player?.pause()
                         dismiss()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "xmark")
+                            Text("Close")
+                        }
+                        .foregroundColor(.white)
                     }
-                    .foregroundColor(.white)
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -224,6 +241,125 @@ struct FullScreenMediaView: View {
                     }
                 }
             }
+        }
+    }
+}
+
+// MARK: - Inline Video Player
+
+struct InlineVideoPlayer: View {
+    let url: URL?
+    @State private var player: AVPlayer?
+    @State private var isPlaying = false
+    
+    var body: some View {
+        ZStack {
+            if let url = url {
+                // Video layer
+                VideoPlayer(player: player)
+                    .frame(maxWidth: 250)
+                    .frame(height: 200)
+                    .cornerRadius(12)
+                    .onAppear {
+                        player = AVPlayer(url: url)
+                    }
+                    .onDisappear {
+                        player?.pause()
+                        player = nil
+                    }
+                
+                // Play/Pause overlay (chỉ hiện khi chưa play)
+                if !isPlaying {
+                    Color.black.opacity(0.3)
+                        .frame(maxWidth: 250)
+                        .frame(height: 200)
+                        .cornerRadius(12)
+                    
+                    Button {
+                        player?.play()
+                        isPlaying = true
+                    } label: {
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 60))
+                            .foregroundColor(.white)
+                            .shadow(radius: 8)
+                    }
+                }
+            } else {
+                // Fallback
+                ZStack {
+                    Color.gray.opacity(0.2)
+                        .frame(maxWidth: 250)
+                        .frame(height: 200)
+                        .cornerRadius(12)
+                    
+                    VStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.largeTitle)
+                            .foregroundColor(.gray)
+                        
+                        Text("Invalid video URL")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Inline Audio Player
+
+struct InlineAudioPlayer: View {
+    let url: URL?
+    let fileName: String
+    @State private var player: AVPlayer?
+    @State private var isPlaying = false
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(spacing: 12) {
+                // Play/Pause button
+                Button {
+                    if isPlaying {
+                        player?.pause()
+                        isPlaying = false
+                    } else {
+                        if player == nil, let url = url {
+                            player = AVPlayer(url: url)
+                        }
+                        player?.play()
+                        isPlaying = true
+                    }
+                } label: {
+                    Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.system(size: 40))
+                        .foregroundColor(.blue)
+                }
+                .disabled(url == nil)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Audio File")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    
+                    Text(fileName)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+                
+                Spacer()
+            }
+            .padding(12)
+        }
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(12)
+        .frame(maxWidth: 250)
+        .onDisappear {
+            player?.pause()
+            player = nil
         }
     }
 }

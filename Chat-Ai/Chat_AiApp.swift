@@ -25,7 +25,7 @@ struct Chat_AiApp: App {
             // Kiểm tra user đã đăng nhập chưa
             if authViewModel.currentUser != nil {
                 // Đã đăng nhập → Hiển thị app chính
-                ContentView()
+            ContentView()
                     .environmentObject(authViewModel)
                     .task {
                         // ✅ Kiểm tra và refresh token khi app khởi động

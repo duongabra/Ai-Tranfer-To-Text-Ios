@@ -58,6 +58,13 @@ struct ChatView: View {
                 messagesListView
             }
             
+            // MARK: - Transcription Progress
+            
+            // Hiển thị progress khi đang transcribe
+            if viewModel.isTranscribing, let progress = viewModel.transcriptionProgress {
+                transcriptionProgressBanner(message: progress)
+            }
+            
             // MARK: - Error Message
             
             // Hiển thị lỗi (nếu có)
@@ -198,6 +205,26 @@ struct ChatView: View {
             
             Spacer()
         }
+    }
+    
+    // MARK: - Transcription Progress Banner
+    
+    /// Banner hiển thị progress khi đang transcribe
+    private func transcriptionProgressBanner(message: String) -> some View {
+        HStack(spacing: 12) {
+            ProgressView()
+                .tint(.blue)
+            
+            Text(message)
+                .font(.subheadline)
+                .foregroundColor(.primary)
+            
+            Spacer()
+        }
+        .padding()
+        .background(Color.blue.opacity(0.1))
+        .cornerRadius(8)
+        .padding(.horizontal)
     }
     
     // MARK: - Error Banner

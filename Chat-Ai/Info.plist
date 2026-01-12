@@ -27,5 +27,7 @@
 	<string>$(SUPABASE_ANON_KEY)</string>
 	<key>SUPABASE_URL</key>
 	<string>$(SUPABASE_URL)</string>
+	<key>TRANSCRIBE_API_URL</key>
+	<string>$(TRANSCRIBE_API_URL)</string>
 </dict>
 </plist>

@@ -29,7 +29,7 @@ struct LoginView: View {
                     .font(.system(size: 42, weight: .bold))
                 
                 // Subtitle
-                Text("Chat với AI đơn giản & nhanh")
+                Text("Simple & Fast AI Chat")
                     .font(.body)
                     .foregroundColor(.secondary)
             }

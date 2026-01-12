@@ -48,7 +48,7 @@ class ChatViewModel: ObservableObject {
                 return
             }
             
-            errorMessage = "Không thể tải tin nhắn: \(error.localizedDescription)"
+            errorMessage = "Cannot load messages: \(error.localizedDescription)"
             print("❌ Error loading messages: \(error)")
         }
         
@@ -104,7 +104,7 @@ class ChatViewModel: ObservableObject {
             }
             
             // Các lỗi khác
-            errorMessage = "Không thể gửi tin nhắn: \(error.localizedDescription)"
+            errorMessage = "Cannot send message: \(error.localizedDescription)"
             print("❌ Error sending message: \(error)")
         }
         
@@ -163,7 +163,7 @@ class ChatViewModel: ObservableObject {
             
             if fileType == .image {
                 // ✅ Image → Dùng Gemini vision
-                let prompt = messageContent == "📎 Sent a file" ? "Hãy mô tả ảnh này chi tiết" : messageContent
+                let prompt = messageContent == "📎 Sent a file" ? "Describe this image in detail" : messageContent
                 aiResponse = try await GeminiService.shared.sendMessageWithImage(
                     text: prompt,
                     imageData: data
@@ -172,7 +172,7 @@ class ChatViewModel: ObservableObject {
                 // ✅ Audio → Chỉ transcribe, KHÔNG gửi AI (user tự gửi sau)
                 print("🎵 Processing audio: \(fileName)")
                 isTranscribing = true
-                transcriptionProgress = "Đang chuyển audio thành text..."
+                transcriptionProgress = "Converting audio to text..."
                 
                 let userId = 8042467986 // Fixed user_id for transcribe API
                 print("👤 User ID (fixed): \(userId)")
@@ -211,7 +211,7 @@ class ChatViewModel: ObservableObject {
                 // ✅ Video → Chỉ transcribe, KHÔNG gửi AI (user tự gửi sau)
                 print("🎥 Processing video: \(fileName)")
                 isTranscribing = true
-                transcriptionProgress = "Đang chuyển video thành text..."
+                transcriptionProgress = "Converting video to text..."
                 
                 let userId = 8042467986 // Fixed user_id for transcribe API
                 
@@ -279,7 +279,7 @@ class ChatViewModel: ObservableObject {
                 return
             }
             
-            errorMessage = "Không thể gửi file: \(error.localizedDescription)"
+            errorMessage = "Cannot send file: \(error.localizedDescription)"
             print("❌ Error sending file: \(error)")
         }
         
@@ -315,7 +315,7 @@ class ChatViewModel: ObservableObject {
                 return
             }
             
-            errorMessage = "Không thể xóa tin nhắn: \(error.localizedDescription)"
+            errorMessage = "Cannot delete messages: \(error.localizedDescription)"
             print("❌ Error clearing messages: \(error)")
         }
     }
@@ -334,7 +334,7 @@ class ChatViewModel: ObservableObject {
                 return
             }
             
-            errorMessage = "Không thể xóa cuộc hội thoại: \(error.localizedDescription)"
+            errorMessage = "Cannot delete conversation: \(error.localizedDescription)"
             print("❌ Error deleting conversation: \(error)")
         }
     }
@@ -362,7 +362,7 @@ class ChatViewModel: ObservableObject {
                 return
             }
             
-            errorMessage = "Không thể đổi tên: \(error.localizedDescription)"
+            errorMessage = "Cannot rename: \(error.localizedDescription)"
             print("❌ Error renaming conversation: \(error)")
         }
     }

@@ -169,15 +169,15 @@ enum AIError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingAPIKey:
-            return "⚠️ Chưa có API key. Vui lòng thêm API key vào file AppConfig.swift"
+            return "⚠️ No API key. Please add API key to AppConfig.swift"
         case .invalidURL:
-            return "URL không hợp lệ"
+            return "Invalid URL"
         case .requestFailed:
-            return "Không thể kết nối đến AI service"
+            return "Cannot connect to AI service"
         case .invalidResponse:
-            return "Phản hồi từ AI không hợp lệ"
+            return "Invalid response from AI"
         case .imageNotSupported:
-            return "⚠️ Groq không hỗ trợ xử lý ảnh. Vui lòng chỉ gửi text."
+            return "⚠️ Groq doesn't support image processing. Please send text only."
         }
     }
 }

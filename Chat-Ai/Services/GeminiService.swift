@@ -21,19 +21,19 @@ enum GeminiError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingAPIKey:
-            return "⚠️ Chưa có Gemini API key"
+            return "⚠️ No Gemini API key"
         case .invalidURL:
-            return "URL không hợp lệ"
+            return "Invalid URL"
         case .requestFailed(let error):
-            return "Yêu cầu API thất bại: \(error.localizedDescription)"
+            return "API request failed: \(error.localizedDescription)"
         case .invalidResponse:
-            return "Phản hồi từ Gemini không hợp lệ"
+            return "Invalid response from Gemini"
         case .decodingFailed(let error):
-            return "Không thể giải mã phản hồi: \(error.localizedDescription)"
+            return "Cannot decode response: \(error.localizedDescription)"
         case .serverError(let statusCode, let message):
-            return "Lỗi server Gemini (\(statusCode)): \(message)"
+            return "Gemini server error (\(statusCode)): \(message)"
         case .unknownError(let error):
-            return "Lỗi không xác định: \(error.localizedDescription)"
+            return "Unknown error: \(error.localizedDescription)"
         }
     }
 }
@@ -72,7 +72,7 @@ actor GeminiService {
                 [
                     "parts": [
                         [
-                            "text": text.isEmpty ? "Hãy mô tả ảnh này" : text
+                            "text": text.isEmpty ? "Describe this image" : text
                         ],
                         [
                             "inline_data": [

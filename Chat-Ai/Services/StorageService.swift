@@ -20,19 +20,19 @@ enum StorageError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidURL:
-            return "URL không hợp lệ"
+            return "Invalid URL"
         case .uploadFailed:
-            return "Không thể upload file"
+            return "Cannot upload file"
         case .fileTooLarge(let maxSize):
             let formatter = ByteCountFormatter()
             formatter.allowedUnits = [.useMB]
             formatter.countStyle = .file
             let maxSizeString = formatter.string(fromByteCount: Int64(maxSize))
-            return "File quá lớn. Kích thước tối đa: \(maxSizeString)"
+            return "File too large. Maximum size: \(maxSizeString)"
         case .unsupportedFileType:
-            return "Loại file không được hỗ trợ"
+            return "File type not supported"
         case .unknownError(let error):
-            return "Lỗi không xác định: \(error.localizedDescription)"
+            return "Unknown error: \(error.localizedDescription)"
         }
     }
 }

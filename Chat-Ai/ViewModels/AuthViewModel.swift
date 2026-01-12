@@ -60,7 +60,7 @@ class AuthViewModel: ObservableObject {
             print("❌ Lỗi đăng nhập: \(error.localizedDescription)")
         } catch {
             // Lỗi khác
-            errorMessage = "Đăng nhập thất bại: \(error.localizedDescription)"
+            errorMessage = "Login failed: \(error.localizedDescription)"
             print("❌ Lỗi đăng nhập: \(error)")
         }
         
@@ -84,7 +84,7 @@ class AuthViewModel: ObservableObject {
             print("✅ Đăng xuất thành công")
             
         } catch {
-            errorMessage = "Đăng xuất thất bại: \(error.localizedDescription)"
+            errorMessage = "Logout failed: \(error.localizedDescription)"
             print("❌ Lỗi đăng xuất: \(error)")
         }
         
@@ -96,7 +96,7 @@ class AuthViewModel: ObservableObject {
     /// Xử lý khi bị logout bắt buộc (do token hết hạn)
     private func handleForcedLogout() {
         currentUser = nil
-        errorMessage = "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
+        errorMessage = "Session expired. Please login again."
         print("⚠️ User bị logout do token hết hạn")
     }
 }

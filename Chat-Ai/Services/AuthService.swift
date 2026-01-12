@@ -430,15 +430,15 @@ enum AuthError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidURL:
-            return "URL không hợp lệ"
+            return "Invalid URL"
         case .signInFailed:
-            return "Đăng nhập thất bại"
+            return "Login failed"
         case .signOutFailed:
-            return "Đăng xuất thất bại"
+            return "Logout failed"
         case .notImplemented:
-            return "Tính năng đang được phát triển"
+            return "Feature under development"
         case .sessionExpired:
-            return "Phiên đăng nhập đã hết hạn"
+            return "Session expired"
         }
     }
 }

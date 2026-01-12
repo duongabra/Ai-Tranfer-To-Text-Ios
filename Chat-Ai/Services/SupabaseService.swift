@@ -430,13 +430,13 @@ enum SupabaseError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .invalidURL:
-            return "URL không hợp lệ"
+            return "Invalid URL"
         case .requestFailed:
-            return "Không thể kết nối đến server"
+            return "Cannot connect to server"
         case .decodingFailed:
-            return "Không thể đọc dữ liệu từ server"
+            return "Cannot read data from server"
         case .unauthorized:
-            return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
+            return "Session expired. Please login again."
         }
     }
 }

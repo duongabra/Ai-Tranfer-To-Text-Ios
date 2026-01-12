@@ -30,7 +30,7 @@ struct ConversationListView: View {
             ZStack {
                 // Nếu đang loading, hiển thị loading indicator
                 if viewModel.isLoading {
-                    ProgressView("Đang tải...")
+                    ProgressView("Loading...")
                 }
                 // Nếu danh sách rỗng và không loading
                 else if viewModel.conversations.isEmpty {
@@ -99,7 +99,7 @@ struct ConversationListView: View {
                 PaywallView()
             }
             // Alert hiển thị lỗi (nếu có)
-            .alert("Lỗi", isPresented: .constant(viewModel.errorMessage != nil)) {
+            .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
                 Button("OK") {
                     viewModel.errorMessage = nil
                 }
@@ -109,15 +109,15 @@ struct ConversationListView: View {
                 }
             }
             // Confirmation dialog xóa tất cả
-            .confirmationDialog("Xóa tất cả cuộc hội thoại?", isPresented: $showingClearAllConfirmation, titleVisibility: .visible) {
-                Button("Xóa tất cả", role: .destructive) {
+            .confirmationDialog("Delete all conversations?", isPresented: $showingClearAllConfirmation, titleVisibility: .visible) {
+                Button("Delete All", role: .destructive) {
                     Task {
                         await viewModel.clearAllConversations()
                     }
                 }
-                Button("Hủy", role: .cancel) {}
+                Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Hành động này không thể hoàn tác. Tất cả cuộc hội thoại và tin nhắn sẽ bị xóa vĩnh viễn.")
+                Text("This action cannot be undone. All conversations and messages will be permanently deleted.")
             }
             // Load conversations khi view xuất hiện
             .task {
@@ -156,11 +156,11 @@ struct ConversationListView: View {
                 .font(.system(size: 60))
                 .foregroundColor(.gray)
             
-            Text("Chưa có cuộc hội thoại nào")
+            Text("No conversations yet")
                 .font(.title2)
                 .fontWeight(.semibold)
             
-            Text("Nhấn nút + để bắt đầu chat với AI")
+            Text("Tap + to start chatting with AI")
                 .font(.body)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -222,28 +222,28 @@ struct NewConversationSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Tiêu đề cuộc hội thoại", text: $title)
+                    TextField("Conversation title", text: $title)
                 } header: {
-                    Text("Thông tin")
+                    Text("Info")
                 } footer: {
-                    Text("Ví dụ: Học Swift, Hỏi về lập trình, v.v.")
+                    Text("Example: Learn Swift, Ask about programming, etc.")
                 }
             }
-            .navigationTitle("Cuộc hội thoại mới")
+            .navigationTitle("New Conversation")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 // Nút Cancel
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Hủy") {
+                    Button("Cancel") {
                         dismiss()
                     }
                 }
                 
                 // Nút Tạo
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Tạo") {
+                    Button("Create") {
                         Task {
-                            await viewModel.createConversation(title: title.isEmpty ? "Cuộc hội thoại mới" : title)
+                            await viewModel.createConversation(title: title.isEmpty ? "New Conversation" : title)
                             dismiss()
                         }
                     }

@@ -157,11 +157,11 @@ enum TranscribeError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .requestFailed:
-            return "Không thể kết nối đến server transcribe"
+            return "Cannot connect to transcribe server"
         case .transcriptionFailed:
-            return "Không thể transcribe audio/video"
+            return "Cannot transcribe audio/video"
         case .invalidFileFormat:
-            return "Định dạng file không được hỗ trợ"
+            return "File format not supported"
         }
     }
 }

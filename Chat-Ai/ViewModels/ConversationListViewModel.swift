@@ -51,7 +51,7 @@ class ConversationListViewModel: ObservableObject {
                 }
                 
                 // Nếu có lỗi khác, lưu message để hiển thị
-                errorMessage = "Không thể tải danh sách: \(error.localizedDescription)"
+                errorMessage = "Cannot load list: \(error.localizedDescription)"
                 print("❌ Error loading conversations: \(error)")
             }
             
@@ -77,7 +77,7 @@ class ConversationListViewModel: ObservableObject {
                 return
             }
             
-            errorMessage = "Không thể tạo cuộc hội thoại: \(error.localizedDescription)"
+            errorMessage = "Cannot create conversation: \(error.localizedDescription)"
             print("❌ Error creating conversation: \(error)")
         }
     }
@@ -98,7 +98,7 @@ class ConversationListViewModel: ObservableObject {
                 return
             }
             
-            errorMessage = "Không thể xóa: \(error.localizedDescription)"
+            errorMessage = "Cannot delete: \(error.localizedDescription)"
             print("❌ Error deleting conversation: \(error)")
         }
     }
@@ -120,7 +120,7 @@ class ConversationListViewModel: ObservableObject {
                 return
             }
             
-            errorMessage = "Không thể xóa: \(error.localizedDescription)"
+            errorMessage = "Cannot delete: \(error.localizedDescription)"
             print("❌ Error clearing all conversations: \(error)")
         }
     }

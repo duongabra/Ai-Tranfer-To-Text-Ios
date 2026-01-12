@@ -48,7 +48,7 @@ struct ChatView: View {
             if viewModel.isLoading {
                 // Đang load messages
                 Spacer()
-                ProgressView("Đang tải tin nhắn...")
+                ProgressView("Loading messages...")
                 Spacer()
             } else if viewModel.messages.isEmpty {
                 // Chưa có message nào
@@ -112,27 +112,27 @@ struct ChatView: View {
             }
         }
         // Confirmation dialog: Clear Messages
-        .confirmationDialog("Xóa tất cả tin nhắn?", isPresented: $showingClearChatConfirmation, titleVisibility: .visible) {
-            Button("Xóa tin nhắn", role: .destructive) {
+        .confirmationDialog("Delete all messages?", isPresented: $showingClearChatConfirmation, titleVisibility: .visible) {
+            Button("Delete Messages", role: .destructive) {
                 Task {
                     await viewModel.clearAllMessages()
                 }
             }
-            Button("Hủy", role: .cancel) {}
+            Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Xóa tất cả tin nhắn nhưng giữ lại cuộc hội thoại.")
+            Text("Delete all messages but keep the conversation.")
         }
         // Confirmation dialog: Delete Conversation
-        .confirmationDialog("Xóa cuộc hội thoại?", isPresented: $showingDeleteConversationConfirmation, titleVisibility: .visible) {
-            Button("Xóa", role: .destructive) {
+        .confirmationDialog("Delete conversation?", isPresented: $showingDeleteConversationConfirmation, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
                 Task {
                     await viewModel.deleteConversation()
                     dismiss() // Quay về list
                 }
             }
-            Button("Hủy", role: .cancel) {}
+            Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Hành động này không thể hoàn tác. Cuộc hội thoại và tất cả tin nhắn sẽ bị xóa vĩnh viễn.")
+            Text("This action cannot be undone. The conversation and all messages will be permanently deleted.")
         }
         // Sheet: Rename Conversation
         .sheet(isPresented: $showingRenameSheet) {
@@ -194,11 +194,11 @@ struct ChatView: View {
                 .font(.system(size: 60))
                 .foregroundColor(.gray)
             
-            Text("Bắt đầu cuộc hội thoại")
+            Text("Start conversation")
                 .font(.title2)
                 .fontWeight(.semibold)
             
-            Text("Gửi tin nhắn đầu tiên để chat với AI")
+            Text("Send your first message to chat with AI")
                 .font(.body)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -285,7 +285,7 @@ struct ChatView: View {
                 .disabled(viewModel.isSending)
                 
                 // Text field để nhập message
-                TextField("Nhập tin nhắn...", text: $viewModel.inputText, axis: .vertical)
+                TextField("Type a message...", text: $viewModel.inputText, axis: .vertical)
                     .textFieldStyle(.plain)
                     .padding(12)
                     .background(Color(.systemGray6))
@@ -393,6 +393,7 @@ struct ChatView: View {
 /// Bubble hiển thị một message
 struct MessageBubble: View {
     let message: Message
+    @State private var showCopiedFeedback = false
     
     var body: some View {
         HStack {
@@ -402,6 +403,7 @@ struct MessageBubble: View {
             }
             
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
+                // Message content
                 VStack(alignment: .leading, spacing: 8) {
                     // ✅ File attachment (nếu có)
                     if let attachment = message.attachment {
@@ -411,6 +413,7 @@ struct MessageBubble: View {
                     // Nội dung message (nếu không phải chỉ có file)
                     if !message.content.isEmpty && message.content != "📎 Sent a file" {
                         Text(message.content)
+                            .textSelection(.enabled)
                             .padding(12)
                             .background(message.role == .user ? Color.blue : Color(.systemGray5))
                             .foregroundColor(message.role == .user ? .white : .primary)
@@ -418,16 +421,43 @@ struct MessageBubble: View {
                     }
                 }
                 
-                // Thời gian
-                Text(formatTime(message.createdAt))
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+                // Thời gian và Copy button cùng hàng
+                HStack {
+                    Text(formatTime(message.createdAt))
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    
+                    Spacer()
+                    
+                    // Copy button
+                    Button(action: {
+                        copyToClipboard(message.content)
+                    }) {
+                        Image(systemName: showCopiedFeedback ? "checkmark" : "doc.on.doc")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
             }
             
             // Nếu là message của AI, đẩy sang trái
             if message.role == .assistant {
                 Spacer(minLength: 60)
             }
+        }
+    }
+    
+    /// Copy text to clipboard
+    private func copyToClipboard(_ text: String) {
+        UIPasteboard.general.string = text
+        
+        // Show feedback
+        showCopiedFeedback = true
+        
+        // Reset after 2 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            showCopiedFeedback = false
         }
     }
     
@@ -458,11 +488,11 @@ struct RenameConversationSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Tên cuộc hội thoại", text: $newTitle)
+                    TextField("Conversation name", text: $newTitle)
                 } header: {
-                    Text("Đổi tên")
+                    Text("Rename")
                 } footer: {
-                    Text("Nhập tên mới cho cuộc hội thoại này.")
+                    Text("Enter a new name for this conversation.")
                 }
             }
             .navigationTitle("Rename")
@@ -470,14 +500,14 @@ struct RenameConversationSheet: View {
             .toolbar {
                 // Nút Cancel
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Hủy") {
+                    Button("Cancel") {
                         dismiss()
                     }
                 }
                 
                 // Nút Save
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Lưu") {
+                    Button("Save") {
                         Task {
                             await viewModel.renameConversation(newTitle: newTitle)
                             dismiss()

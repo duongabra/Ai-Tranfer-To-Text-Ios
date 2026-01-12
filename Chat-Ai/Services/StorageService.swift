@@ -64,10 +64,20 @@ actor StorageService {
     ///   - data: Data của file
     ///   - fileName: Tên file
     ///   - fileType: Loại file
+    ///   - customMaxSize: Max file size tùy chỉnh (optional, nếu nil thì dùng default)
     /// - Returns: Public URL của file đã upload
-    func uploadFile(data: Data, fileName: String, fileType: FileAttachment.FileType) async throws -> String {
+    func uploadFile(data: Data, fileName: String, fileType: FileAttachment.FileType, customMaxSize: Int? = nil) async throws -> String {
         // Kiểm tra kích thước file
-        if let maxSize = maxFileSize[fileType], data.count > maxSize {
+        let maxSize: Int
+        if let customMaxSize = customMaxSize {
+            maxSize = customMaxSize
+        } else if let defaultMaxSize = maxFileSize[fileType] {
+            maxSize = defaultMaxSize
+        } else {
+            maxSize = 10 * 1024 * 1024 // Default 10MB
+        }
+        
+        if data.count > maxSize {
             throw StorageError.fileTooLarge(maxSize: maxSize)
         }
         

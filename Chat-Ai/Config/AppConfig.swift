@@ -75,7 +75,7 @@ struct AppConfig {
     
     /// Lấy user ID hiện tại từ UserDefaults (sau khi đăng nhập)
     /// - Returns: UUID của user đã đăng nhập, hoặc UUID mới nếu chưa đăng nhập
-    /// - Note: AuthService sẽ lưu userId vào UserDefaults sau khi đăng nhập thành công
+    /// - Note: AuthService sẽ lưu userId vào UserDefaults sau khi đăng nhập thành cônghttps://www.figma.com/design/YFjaZ2aSDIW75r060Zhblf/VidSum---Video-Sumarizer?node-id=51413-6619&m=dev
     static func getCurrentUserId() -> UUID {
         // Lấy từ UserDefaults (đã được AuthService lưu sau khi đăng nhập)
         if let savedUserId = UserDefaults.standard.string(forKey: "userId"),

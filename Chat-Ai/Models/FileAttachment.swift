@@ -10,7 +10,7 @@ import Foundation
 // MARK: - FileAttachment
 
 /// Đại diện cho một file đính kèm (ảnh, video, audio)
-struct FileAttachment: Identifiable, Codable {
+struct FileAttachment: Identifiable, Codable, Equatable {
     let id: UUID
     let url: String           // URL của file (từ Supabase Storage)
     let name: String          // Tên file gốc

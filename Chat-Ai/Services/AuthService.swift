@@ -26,6 +26,50 @@ actor AuthService {
     // ✅ Background timer để tự động refresh token
     private var refreshTimer: Task<Void, Never>?
     
+    // MARK: - Apple Sign In
+    
+    /// Sign in với Apple (Native Apple Sign In)
+    /// - Returns: User đã đăng nhập
+    @MainActor
+    func signInWithApple() async throws -> User {
+        return try await withCheckedThrowingContinuation { continuation in
+            let appleIDProvider = ASAuthorizationAppleIDProvider()
+            let request = appleIDProvider.createRequest()
+            request.requestedScopes = [.fullName, .email]
+            
+            var delegate: AppleSignInDelegate?
+            var contextProvider: AppleSignInContextProvider?
+            
+            delegate = AppleSignInDelegate { result in
+                // Đảm bảo continuation chỉ được resume 1 lần
+                switch result {
+                case .success(let user):
+                    continuation.resume(returning: user)
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+                // Clear references sau khi hoàn thành
+                delegate = nil
+                contextProvider = nil
+            }
+            
+            contextProvider = AppleSignInContextProvider()
+            
+            let authorizationController = ASAuthorizationController(authorizationRequests: [request])
+            authorizationController.delegate = delegate
+            authorizationController.presentationContextProvider = contextProvider
+            
+            // Giữ strong reference đến delegate và context provider
+            objc_setAssociatedObject(authorizationController, "delegate", delegate, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            objc_setAssociatedObject(authorizationController, "contextProvider", contextProvider, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            
+            // Giữ reference đến controller để tránh deallocate
+            objc_setAssociatedObject(authorizationController, "controller", authorizationController, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            
+            authorizationController.performRequests()
+        }
+    }
+    
     // MARK: - Google Sign In
     
     /// Sign in với Google (qua Supabase OAuth)
@@ -463,5 +507,138 @@ class WebAuthenticationPresentationContextProvider: NSObject, ASWebAuthenticatio
 extension Notification.Name {
     /// Notification khi user bị logout (do token hết hạn)
     static let userDidLogout = Notification.Name("userDidLogout")
+}
+
+// MARK: - Apple Sign In Context Provider
+
+/// Context provider cho Apple Sign In
+@MainActor
+class AppleSignInContextProvider: NSObject, ASAuthorizationControllerPresentationContextProviding {
+    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first else {
+            fatalError("❌ Không tìm thấy window để hiển thị Apple Sign In")
+        }
+        return window
+    }
+}
+
+// MARK: - Apple Sign In Delegate
+
+/// Delegate để xử lý Apple Sign In callback
+@MainActor
+class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate {
+    private let completion: (Result<User, Error>) -> Void
+    
+    init(completion: @escaping (Result<User, Error>) -> Void) {
+        self.completion = completion
+    }
+    
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
+        guard let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential else {
+            completion(.failure(AuthError.signInFailed))
+            return
+        }
+        
+        // Lấy identity token
+        guard let identityTokenData = appleIDCredential.identityToken,
+              let identityToken = String(data: identityTokenData, encoding: .utf8) else {
+            completion(.failure(AuthError.signInFailed))
+            return
+        }
+        
+        // Lấy thông tin user
+        let userID = appleIDCredential.user
+        let email = appleIDCredential.email ?? "\(userID)@privaterelay.appleid.com"
+        let fullName = appleIDCredential.fullName
+        
+        var displayName: String?
+        if let givenName = fullName?.givenName, let familyName = fullName?.familyName {
+            displayName = "\(givenName) \(familyName)"
+        } else if let givenName = fullName?.givenName {
+            displayName = givenName
+        }
+        
+        // Gửi identity token đến Supabase để authenticate
+        Task {
+            do {
+                let user = try await self.authenticateWithSupabase(
+                    identityToken: identityToken,
+                    userID: userID,
+                    email: email,
+                    displayName: displayName
+                )
+                self.completion(.success(user))
+            } catch {
+                self.completion(.failure(error))
+            }
+        }
+    }
+    
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+        print("❌ Apple Sign In error: \(error)")
+        completion(.failure(AuthError.signInFailed))
+    }
+    
+    /// Authenticate với Supabase sử dụng Apple identity token
+    private func authenticateWithSupabase(identityToken: String, userID: String, email: String, displayName: String?) async throws -> User {
+        // Gọi Supabase API để sign in với Apple
+        guard let url = URL(string: "\(AppConfig.supabaseURL)/auth/v1/token?grant_type=id_token") else {
+            throw AuthError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(AppConfig.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Body: provider và id_token
+        let body: [String: Any] = [
+            "provider": "apple",
+            "id_token": identityToken
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.signInFailed
+        }
+        
+        // Debug response
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("📦 Supabase Apple Sign In Response: \(responseString)")
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            print("❌ Supabase Apple Sign In failed with status: \(httpResponse.statusCode)")
+            throw AuthError.signInFailed
+        }
+        
+        // Parse response để lấy access token và user info
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let accessToken = json["access_token"] as? String,
+              let refreshToken = json["refresh_token"] as? String,
+              let userJson = json["user"] as? [String: Any],
+              let idString = userJson["id"] as? String,
+              let id = UUID(uuidString: idString) else {
+            throw AuthError.signInFailed
+        }
+        
+        // Tạo User object
+        let user = User(
+            id: id,
+            email: email,
+            createdAt: Date(),
+            displayName: displayName,
+            avatarURL: nil
+        )
+        
+        // Lưu session
+        await AuthService.shared.saveSession(user: user, accessToken: accessToken, refreshToken: refreshToken)
+        
+        print("✅ Apple Sign In successful")
+        return user
+    }
 }
 

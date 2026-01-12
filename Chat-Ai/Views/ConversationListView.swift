@@ -164,7 +164,7 @@ struct ConversationListView: View {
                 .font(.body)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal)
+                .padding(.horizontal, 16)
         }
     }
     

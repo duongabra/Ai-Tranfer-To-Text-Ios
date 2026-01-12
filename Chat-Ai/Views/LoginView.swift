@@ -2,7 +2,7 @@
 //  LoginView.swift
 //  Chat-Ai
 //
-//  Màn hình đăng nhập với Google
+//  Màn hình đăng nhập theo Figma Design
 //
 
 import SwiftUI
@@ -12,75 +12,88 @@ struct LoginView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     
     var body: some View {
-        VStack(spacing: 40) {
+        ZStack {
+            // Background color
+            Color.backgroundCream
+                .ignoresSafeArea()
             
-            Spacer()
-            
-            // MARK: - Logo & Title
-            
-            VStack(spacing: 20) {
-                // Icon
-                Image(systemName: "bubble.left.and.bubble.right.fill")
-                    .font(.system(size: 80))
-                    .foregroundColor(.blue)
+            VStack(spacing: 0) {
+                Spacer()
                 
-                // Title
-                Text("Chat AI")
-                    .font(.system(size: 42, weight: .bold))
-                
-                // Subtitle
-                Text("Simple & Fast AI Chat")
-                    .font(.body)
-                    .foregroundColor(.secondary)
-            }
-            
-            Spacer()
-            
-            // MARK: - Sign In Button
-            
-            VStack(spacing: 16) {
-                
-                // Google Sign In Button
-                Button(action: {
-                    Task {
-                        await authViewModel.signInWithGoogle()
-                    }
-                }) {
-                    HStack(spacing: 12) {
-                        // Google Icon (sử dụng SF Symbol tạm thời)
-                        Image(systemName: "g.circle.fill")
-                            .font(.title2)
+                // MARK: - Content
+                VStack(spacing: 16) {
+                    
+                    // Hero Illustration
+                    Image("login_hero")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 390, height: 390)
+                    
+                    // Text Section
+                    VStack(spacing: 12) {
+                        Text("Analyze your video / audio")
+                            .font(.custom("Overused Grotesk", size: 28))
+                            .fontWeight(.semibold)
+                            .lineSpacing(36 - 28)
+                            .fontDesign(.default) // Mimic font-family-sans
+                            .foregroundColor(Color(red: 2/255, green: 2/255, blue: 2/255))
+                            .multilineTextAlignment(.center)
+                            .environment(\.font, .system(.body, design: .default).lowercaseSmallCaps().monospacedDigit())
                         
-                        Text("Sign in with Google")
-                            .font(.headline)
+                        Text("AI summaries and insights from any content")
+                            .font(.custom("Overused Grotesk", size: 16))
+                            .fontWeight(.regular)
+                            .foregroundColor(Color(red: 48/255, green: 48/255, blue: 48/255))
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(24 - 16)
+                            .fontDesign(.default)
+                            .environment(\.font, .system(.body, design: .default).monospacedDigit())
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(12)
-                }
-                .disabled(authViewModel.isLoading)
-                
-                // Loading indicator
-                if authViewModel.isLoading {
-                    ProgressView()
-                        .padding(.top, 8)
+                    .padding(.horizontal, 16)
                 }
                 
-                // Error message
-                if let errorMessage = authViewModel.errorMessage {
-                    Text(errorMessage)
-                        .font(.caption)
-                        .foregroundColor(.red)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
+                Spacer()
+                
+                // MARK: - Buttons
+                VStack(spacing: 16) {
+                    
+                    // Sign in with Apple Button
+                    PrimaryButton(
+                        title: "Sign in with Apple",
+                        icon: "apple.logo",
+                        action: {
+                            Task {
+                                await authViewModel.signInWithApple()
+                            }
+                        },
+                        isLoading: authViewModel.isLoading
+                    )
+                    
+                    // Sign in with Google Button
+                    SecondaryButton(
+                        title: "Sign in with Google",
+                        icon: .google,
+                        action: {
+                            Task {
+                                await authViewModel.signInWithGoogle()
+                            }
+                        },
+                        isLoading: authViewModel.isLoading
+                    )
+                    
+                    // Error message
+                    if let errorMessage = authViewModel.errorMessage {
+                        Text(errorMessage)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .multilineTextAlignment(.center)
+                            .padding(.top, 8)
+                    }
                 }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 50)
             }
-            .padding(.horizontal, 32)
-            .padding(.bottom, 50)
         }
-        .background(Color(.systemBackground))
     }
 }
 

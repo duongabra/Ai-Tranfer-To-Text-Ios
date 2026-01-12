@@ -224,7 +224,7 @@ struct ChatView: View {
         .padding()
         .background(Color.blue.opacity(0.1))
         .cornerRadius(8)
-        .padding(.horizontal)
+        .padding(.horizontal, 16)
     }
     
     // MARK: - Error Banner
@@ -331,7 +331,7 @@ struct ChatView: View {
                 }
                 .disabled(!canSendMessage || viewModel.isSending)
             }
-            .padding(.horizontal)
+            .padding(.horizontal, 16)
             .padding(.vertical, 8)
         }
         .background(Color(.systemBackground))

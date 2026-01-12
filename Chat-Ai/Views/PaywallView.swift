@@ -54,7 +54,7 @@ struct PaywallView: View {
                                 )
                             }
                         }
-                        .padding(.horizontal)
+                        .padding(.horizontal, 16)
                     }
                     
                     // MARK: - Features
@@ -70,7 +70,7 @@ struct PaywallView: View {
                     .padding()
                     .background(Color.gray.opacity(0.1))
                     .cornerRadius(12)
-                    .padding(.horizontal)
+                    .padding(.horizontal, 16)
                     
                     // MARK: - Subscribe Button
                     Button(action: {
@@ -92,7 +92,7 @@ struct PaywallView: View {
                         .cornerRadius(12)
                     }
                     .disabled(isLoading || selectedPlan == nil)
-                    .padding(.horizontal)
+                    .padding(.horizontal, 16)
                     
                     // MARK: - Error Message
                     if let errorMessage = errorMessage {
@@ -100,7 +100,7 @@ struct PaywallView: View {
                             .font(.caption)
                             .foregroundColor(.red)
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal)
+                            .padding(.horizontal, 16)
                     }
                     
                     // MARK: - Restore Purchases

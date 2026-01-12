@@ -38,6 +38,35 @@ class AuthViewModel: ObservableObject {
         }
     }
     
+    // MARK: - Sign In with Apple
+    
+    /// Đăng nhập với Apple
+    func signInWithApple() async {
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            // Gọi AuthService để đăng nhập
+            let user = try await AuthService.shared.signInWithApple()
+            
+            // Update UI
+            currentUser = user
+            
+            print("✅ Đăng nhập Apple thành công: \(user.email)")
+            
+        } catch let error as AuthError {
+            // Lỗi từ AuthService
+            errorMessage = error.localizedDescription
+            print("❌ Lỗi đăng nhập Apple: \(error.localizedDescription)")
+        } catch {
+            // Lỗi khác
+            errorMessage = "Apple login failed: \(error.localizedDescription)"
+            print("❌ Lỗi đăng nhập Apple: \(error)")
+        }
+        
+        isLoading = false
+    }
+    
     // MARK: - Sign In with Google
     
     /// Đăng nhập với Google

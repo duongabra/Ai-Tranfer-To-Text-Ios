@@ -17,34 +17,76 @@ struct PaywallView: View {
     @State private var errorMessage: String?
     
     var body: some View {
-        NavigationView {
+        ZStack {
+            // Background màu #D87757
+            Color.primaryOrange.opacity(0.05)
+                .ignoresSafeArea()
+            
             ScrollView {
-                VStack(spacing: 30) {
+                VStack(spacing: 24) {
                     
-                    // MARK: - Header
-                    VStack(spacing: 10) {
-                        Image(systemName: "crown.fill")
-                            .font(.custom("Overused Grotesk", size: 60))
-                            .foregroundColor(.yellow)
+                    // MARK: - Art Illustration
+                    Image("art_illustration")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 358, height: 200)
+                        // .padding(.top, 16)
+                    
+                    // MARK: - Title + Description
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Go Pro for Full Access")
+                            .font(.custom("Overused Grotesk", size: 24))
+                            .fontWeight(.semibold)
+                            .monospacedDigit()
+                            .foregroundColor(.textPrimary)
+                            .multilineTextAlignment(.leading)
+                            .lineSpacing(32 - 24) // line-height: 32px
                         
-                        Text("Upgrade to Premium")
-                            .font(.custom("Overused Grotesk", size: 34))
-                            .fontWeight(.bold)
-                        
-                        Text("Unlock unlimited messages and GPT-4 access")
-                            .font(.custom("Overused Grotesk", size: 15))
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
+                        Text("Unlock the complete summary and chat deeper with the video content.")
+                            .font(.custom("Overused Grotesk", size: 14))
+                            .fontWeight(.regular)
+                            .monospacedDigit()
+                            .foregroundColor(.textTertiary)
+                            .multilineTextAlignment(.leading)
+                            .lineSpacing(20 - 14) // line-height: 20px
                     }
-                    .padding(.top, 20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    
+                    // MARK: - Features
+                    VStack(spacing: 8) {
+                        FeatureRow(
+                            icon: "video_camera_icon",
+                            text: "Unlimited video analyzing"
+                        )
+                        FeatureRow(
+                            icon: "document_icon",
+                            text: "Build your knowledge library"
+                        )
+                        FeatureRow(
+                            icon: "history_icon",
+                            text: "Save hours with Pro Summarizes"
+                        )
+                    }
+                    .environment(\.multilineTextAlignment, TextAlignment.center)
+                    .environment(\.font, Font.custom("Overused Grotesk", size: 16)
+                        .weight(.semibold)
+                    )
+                    .padding(.horizontal, 16)
                     
                     // MARK: - Plans
                     if isLoading && availablePlans.isEmpty {
                         ProgressView("Loading plans...")
                             .padding()
                     } else {
-                        VStack(spacing: 15) {
-                            ForEach(availablePlans.filter { $0.isPremium }) { plan in
+                        VStack(spacing: 12) {
+                            // Sắp xếp: yearly lên trước, sau đó monthly
+                            ForEach(availablePlans.filter { $0.isPremium }.sorted { plan1, plan2 in
+                                if plan1.type == .yearly { return true }
+                                if plan2.type == .yearly { return false }
+                                if plan1.type == .monthly { return true }
+                                return false
+                            }) { plan in
                                 PlanCard(
                                     plan: plan,
                                     isSelected: selectedPlan?.id == plan.id,
@@ -57,42 +99,51 @@ struct PaywallView: View {
                         .padding(.horizontal, 16)
                     }
                     
-                    // MARK: - Features
-                    VStack(alignment: .leading, spacing: 15) {
-                        Text("Premium Features")
-                            .font(.custom("Overused Grotesk", size: 17))
-                            .fontWeight(.semibold)
-                        
-                        FeatureRow(icon: "infinity", text: "Unlimited messages")
-                        FeatureRow(icon: "brain.head.profile", text: "GPT-4 access")
-                        FeatureRow(icon: "clock.arrow.circlepath", text: "Chat history saved forever")
-                        FeatureRow(icon: "headphones", text: "Priority support")
-                    }
-                    .padding()
-                    .background(Color.gray.opacity(0.1))
-                    .cornerRadius(12)
-                    .padding(.horizontal, 16)
-                    
-                    // MARK: - Subscribe Button
-                    Button(action: {
-                        subscribeToPlan()
-                    }) {
-                        HStack {
-                            if isLoading {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            } else {
-                                Text("Subscribe to \(selectedPlan?.title ?? "Premium")")
-                                    .fontWeight(.semibold)
+                    // MARK: - Buttons
+                    VStack(spacing: 8) {
+                        // Primary Button: Upgrade to Pro
+                        Button(action: {
+                            subscribeToPlan()
+                        }) {
+                            HStack(spacing: 8) {
+                                Image("crown_icon")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 20, height: 20)
+                                    .padding(2)
+                                
+                                if isLoading {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .textWhite))
+                                } else {
+                                    Text("Upgrade to Pro")
+                                        .font(.custom("Overused Grotesk", size: 16))
+                                        .fontWeight(.semibold)
+                                }
                             }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .padding(.horizontal, 20)
+                            .padding(.leading, 10)
+                            .background(Color.primaryOrange)
+                            .foregroundColor(.textWhite)
+                            .cornerRadius(16)
+                        }
+                        .disabled(isLoading || selectedPlan == nil)
+                        
+                        // Secondary Button: Not now
+                        Button(action: {
+                            dismiss()
+                        }) {
+                            Text("Not now")
+                                .font(.custom("Overused Grotesk", size: 16))
+                                .fontWeight(.semibold)
+                                .foregroundColor(.textPrimary)
                         }
                         .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(selectedPlan != nil ? Color.blue : Color.gray)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 20)
                     }
-                    .disabled(isLoading || selectedPlan == nil)
                     .padding(.horizontal, 16)
                     
                     // MARK: - Error Message
@@ -101,37 +152,41 @@ struct PaywallView: View {
                             .font(.custom("Overused Grotesk", size: 12))
                             .foregroundColor(.red)
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, 0)
                     }
                     
-                    // MARK: - Restore Purchases
-                    Button(action: {
-                        restorePurchases()
-                    }) {
-                        Text("Restore Purchases")
-                            .font(.custom("Overused Grotesk", size: 13))
-                            .foregroundColor(.blue)
+                    // MARK: - Terms & Policy
+                    HStack(spacing: 8) {
+                        Button(action: {
+                            // TODO: Open Terms & Conditions
+                        }) {
+                            Text("Terms & Conditions")
+                                .font(.custom("Overused Grotesk", size: 13))
+                                .fontWeight(.regular)
+                                .foregroundColor(.textTertiary)
+                        }
+                        
+                        Rectangle()
+                            .fill(Color.borderGray)
+                            .frame(width: 1, height: 12)
+                        
+                        Button(action: {
+                            // TODO: Open Privacy Policy
+                        }) {
+                            Text("Privacy Policy")
+                                .font(.custom("Overused Grotesk", size: 13))
+                                .fontWeight(.regular)
+                                .foregroundColor(.textTertiary)
+                        }
                     }
                     .padding(.bottom, 20)
-                    
-                    // MARK: - Terms
-                    Text("Auto-renewable. Cancel anytime.")
-                        .font(.custom("Overused Grotesk", size: 12))
-                        .foregroundColor(.secondary)
-                        .padding(.bottom, 10)
                 }
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Close") {
-                        dismiss()
-                    }
-                }
-            }
-            .task {
-                await loadPlans()
-            }
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .task {
+            await loadPlans()
         }
     }
     
@@ -161,9 +216,9 @@ struct PaywallView: View {
                 return updatedPlan
             }
             
-            // Auto-select Monthly (nếu chưa mua)
+            // Auto-select Yearly (nếu chưa mua)
             if currentProductId == nil {
-                selectedPlan = availablePlans.first(where: { $0.type == .monthly })
+                selectedPlan = availablePlans.first(where: { $0.type == .yearly })
             } else {
                 // Nếu đã mua rồi, chọn gói khác (để upgrade/downgrade)
                 selectedPlan = availablePlans.first(where: { !$0.isCurrentPlan && $0.isPremium })
@@ -185,9 +240,9 @@ struct PaywallView: View {
             let hasActiveSubscription = await RevenueCatService.shared.hasActiveSubscription()
             print("📱 Has active subscription: \(hasActiveSubscription)")
             
-            // Auto-select Monthly
-            if let monthlyPlan = availablePlans.first(where: { $0.type == .monthly }) {
-                selectedPlan = monthlyPlan
+            // Auto-select Yearly
+            if let yearlyPlan = availablePlans.first(where: { $0.type == .yearly }) {
+                selectedPlan = yearlyPlan
             } else if let firstPremiumPlan = availablePlans.first(where: { $0.isPremium }) {
                 selectedPlan = firstPremiumPlan
             }
@@ -274,68 +329,104 @@ struct PlanCard: View {
     let isSelected: Bool
     let onTap: () -> Void
     
+    // Yearly plan = gói năm (luôn có background cam nhạt)
+    // Monthly plan = gói tháng (background trắng)
+    private var isYearlyPlan: Bool {
+        return plan.type == .yearly
+    }
+    
     var body: some View {
         Button(action: onTap) {
-            HStack {
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack {
+            HStack(alignment: .center, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
+                    // Title row với badge "Best value" cho yearly plan
+                    HStack(alignment: .center, spacing: 6) {
                         Text(plan.title)
-                            .font(.custom("Overused Grotesk", size: 17))
+                            .font(.custom("Overused Grotesk", size: 18))
                             .fontWeight(.semibold)
+                            .foregroundColor(.textPrimary)
                         
-                        // Tag "CURRENT PLAN" nếu đang dùng gói này
-                        if plan.isCurrentPlan {
-                            Text("CURRENT PLAN")
-                                .font(.custom("Overused Grotesk", size: 11))
-                                .fontWeight(.bold)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color.blue)
-                                .foregroundColor(.white)
-                                .cornerRadius(4)
-                        }
-                        
-                        // Tag "BEST VALUE" cho Monthly
-                        if plan.type == .monthly && !plan.isCurrentPlan {
-                            Text("BEST VALUE")
-                                .font(.custom("Overused Grotesk", size: 11))
-                                .fontWeight(.bold)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color.green)
-                                .foregroundColor(.white)
-                                .cornerRadius(4)
+                        // Badge "30% Off" hoặc "Best value" cho yearly plan
+                        if isYearlyPlan && !plan.isCurrentPlan {
+                            HStack(spacing: 4) {
+                                Image("Group_icon")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 12, height: 12)
+                                    .foregroundColor(.textWhite)
+                                
+                                Text("30% Off")
+                                    .font(.custom("Overused Grotesk", size: 12))
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.textWhite)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.primaryOrange)
+                            .cornerRadius(16)
                         }
                     }
                     
-                    Text(plan.description)
-                        .font(.custom("Overused Grotesk", size: 12))
-                        .foregroundColor(.secondary)
+                    // Description row
+                    HStack(alignment: .center, spacing: 6) {
+                        if isYearlyPlan {
+                            Text("Best value")
+                                .font(.custom("Overused Grotesk", size: 14))
+                                .fontWeight(.regular)
+                                .foregroundColor(.textTertiary)
+                            
+                            // Dot separator
+                            Circle()
+                                .fill(Color.primaryOrange)
+                                .frame(width: 4, height: 4)
+                            
+                            Text("Unlimited analyzing")
+                                .font(.custom("Overused Grotesk", size: 14))
+                                .fontWeight(.regular)
+                                .foregroundColor(.textTertiary)
+                        } else {
+                            // Monthly plan không có description
+                        }
+                    }
                 }
                 
                 Spacer()
                 
-                VStack(alignment: .trailing) {
+                // Price column
+                VStack(alignment: .trailing, spacing: 2) {
                     Text(plan.price)
-                        .font(.custom("Overused Grotesk", size: 22))
-                        .fontWeight(.bold)
-                        .fontWeight(.bold)
+                        .font(.custom("Overused Grotesk", size: 20))
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primaryOrange)
                     
                     Text(plan.duration)
-                        .font(.custom("Overused Grotesk", size: 12))
-                        .foregroundColor(.secondary)
+                        .font(.custom("Overused Grotesk", size: 14))
+                        .fontWeight(.semibold)
+                        .foregroundColor(.textTertiary)
                 }
             }
-            .padding()
-            .background(isSelected ? Color.blue.opacity(0.1) : Color.gray.opacity(0.1))
-            .cornerRadius(12)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(
+                // Gói năm (weekly) luôn có background cam nhạt
+                // Gói tháng (monthly) background trắng
+                isYearlyPlan
+                    ? Color.primaryOrange.opacity(0.1)
+                    : Color.white
             )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(
+                        // Nếu chọn gói nào thì gói đó có border màu cam
+                        isSelected
+                            ? Color.primaryOrange
+                            : Color(hex: "000000").opacity(0.05),
+                        lineWidth: 1
+                    )
+            )
+            .cornerRadius(16)
         }
         .buttonStyle(PlainButtonStyle())
-        // Disable button nếu đang là current plan
         .disabled(plan.isCurrentPlan)
         .opacity(plan.isCurrentPlan ? 0.6 : 1.0)
     }
@@ -348,13 +439,20 @@ struct FeatureRow: View {
     let text: String
     
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .foregroundColor(.blue)
-                .frame(width: 20)
+        HStack(alignment: .center, spacing: 8) {
+            Image(icon)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 20, height: 20)
+                .foregroundColor(.white)
             
             Text(text)
-                .font(.custom("Overused Grotesk", size: 15))
+                .font(.custom("Overused Grotesk", size: 16))
+                .fontWeight(.semibold)
+                .monospacedDigit()
+                .foregroundColor(.textPrimary)
+                .multilineTextAlignment(.leading)
+                .lineSpacing(24 - 16) // line-height: 24px
             
             Spacer()
         }
@@ -366,4 +464,3 @@ struct FeatureRow: View {
 #Preview {
     PaywallView()
 }
-

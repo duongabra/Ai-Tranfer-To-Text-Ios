@@ -64,14 +64,18 @@ actor RevenueCatService {
             print("📦 Package: \(packageId) → Product: \(productId)")
             
             // Map product ID với plan type
-            if productId == "com.whales.freechat.weekly" {
-                let plan = SubscriptionPlan(type: .weekly, package: package)
+            if productId == "com.whales.freechat.yearly" {
+                let plan = SubscriptionPlan(type: .yearly, package: package)
                 plans.append(plan)
-                print("✅ Added Weekly plan")
+                print("✅ Added Yearly plan")
             } else if productId == "com.whales.freechat.monthly" {
                 let plan = SubscriptionPlan(type: .monthly, package: package)
                 plans.append(plan)
                 print("✅ Added Monthly plan")
+            } else if productId == "com.whales.freechat.weekly" {
+                let plan = SubscriptionPlan(type: .weekly, package: package)
+                plans.append(plan)
+                print("✅ Added Weekly plan")
             } else {
                 print("⚠️ Unknown product: \(productId)")
             }

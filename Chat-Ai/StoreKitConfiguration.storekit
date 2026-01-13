@@ -86,21 +86,21 @@
           "codeOffers" : [
 
           ],
-          "displayPrice" : "9.99",
+          "displayPrice" : "199.00",
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "6739042319",
           "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "Weekly Premium Subscription",
-              "displayName" : "Weekly Premium",
+              "description" : "Yearly Premium Subscription - Best value with 30% off",
+              "displayName" : "Yearly",
               "locale" : "en_US"
             }
           ],
-          "productID" : "com.whales.freechat.weekly",
-          "recurringSubscriptionPeriod" : "P1W",
-          "referenceName" : "Weekly Premium",
+          "productID" : "com.whales.freechat.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Yearly Premium",
           "subscriptionGroupID" : "21603056",
           "type" : "RecurringSubscription",
           "winbackOffers" : [
@@ -114,7 +114,7 @@
           "codeOffers" : [
 
           ],
-          "displayPrice" : "24.99",
+          "displayPrice" : "199.00",
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "6739042320",
@@ -122,7 +122,7 @@
           "localizations" : [
             {
               "description" : "Monthly Premium Subscription",
-              "displayName" : "Monthly Premium",
+              "displayName" : "Monthly",
               "locale" : "en_US"
             }
           ],

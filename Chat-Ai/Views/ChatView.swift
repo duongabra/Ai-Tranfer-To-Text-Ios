@@ -35,6 +35,9 @@ struct ChatView: View {
     // Conversation list drawer state
     @State private var showingConversationListDrawer = false
     
+    // Settings state
+    @State private var showingSettings = false
+    
     // State để lưu ScrollViewReader proxy
     @State private var scrollProxy: ScrollViewProxy?
     
@@ -46,6 +49,9 @@ struct ChatView: View {
     
     // Environment object cho auth
     @EnvironmentObject var authViewModel: AuthViewModel
+    
+    // Environment object cho navigation coordinator
+    @EnvironmentObject var navigationCoordinator: NavigationCoordinator
     
     /// Initializer
     init(conversation: Conversation) {
@@ -107,34 +113,42 @@ struct ChatView: View {
         .overlay(alignment: .leading) {
             ConversationListDrawer(
                 isPresented: $showingConversationListDrawer,
+                navigationCoordinator: navigationCoordinator,
                 onConversationSelected: { selectedConversation in
-                    // Nếu chọn conversation khác, gửi notification để HomeView replace conversation trong navigation stack
+                    // Nếu chọn conversation khác, dismiss ChatView trước, sau đó navigate đến conversation mới
                     if selectedConversation.id != conversation.id {
                         print("🔄 ChatView: Selected conversation \(selectedConversation.title), current: \(conversation.title)")
                         // Đóng drawer trước
                         showingConversationListDrawer = false
-                        // Đợi một chút để drawer đóng xong, sau đó gửi notification
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                            print("🔄 ChatView: Posting ReplaceConversation notification")
-                            NotificationCenter.default.post(
-                                name: NSNotification.Name("ReplaceConversation"),
-                                object: nil,
-                                userInfo: ["conversation": selectedConversation]
-                            )
+                        // Dismiss ChatView trước
+                        dismiss()
+                        // Đợi một chút để ChatView dismiss xong, sau đó navigate đến conversation mới
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                            self.navigationCoordinator.replaceConversation(selectedConversation)
+                            print("🔄 ChatView: Navigated to conversation via coordinator")
                         }
                     }
                 },
                 onHomeSelected: {
-                    // Gửi notification để HomeView clear navigation path và về home
-                    NotificationCenter.default.post(
-                        name: NSNotification.Name("NavigateToHome"),
-                        object: nil
-                    )
+                    // Sử dụng navigationCoordinator để về home
+                    navigationCoordinator.navigateToHome()
                     // Dismiss ChatView
                     dismiss()
+                },
+                onSettingsSelected: {
+                    showingSettings = true
                 }
             )
             .environmentObject(authViewModel)
+        }
+        .overlay(alignment: .bottom) {
+            if showingSettings {
+                SettingsView()
+                    .environmentObject(authViewModel)
+                    .environmentObject(navigationCoordinator)
+                    .transition(.move(edge: .bottom))
+                    .zIndex(1000)
+            }
         }
     }
     

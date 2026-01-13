@@ -10,9 +10,10 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     
+    @StateObject private var navigationCoordinator = NavigationCoordinator()
+    
     @State private var hasActiveSubscription = false
     @State private var isLoadingSubscription = true
-    @State private var showingPaywall = false
     
     // File picker states
     @State private var showingUploadModal = false
@@ -21,14 +22,14 @@ struct HomeView: View {
     @State private var selectedFile: FileAttachment?
     @State private var selectedFileData: Data?
     
-    // Navigation state
-    @State private var navigationPath = NavigationPath()
-    
     // Conversation list drawer state
     @State private var showingConversationListDrawer = false
     
+    // Settings state
+    @State private var showingSettings = false
+    
     var body: some View {
-        NavigationStack(path: $navigationPath) {
+        NavigationStack(path: $navigationCoordinator.navigationPath) {
             ZStack(alignment: .bottom) {
             // Background - màu trắng #FFF
             Color.white
@@ -76,33 +77,7 @@ struct HomeView: View {
                     await checkSubscriptionStatus()
                 }
             }
-            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ReplaceConversation"))) { notification in
-                // Nhận notification từ ChatView khi chọn conversation khác từ drawer
-                // Replace conversation trong navigation stack để nhảy thẳng đến ChatView mới
-                if let conversation = notification.userInfo?["conversation"] as? Conversation {
-                    print("🔄 Received ReplaceConversation notification for: \(conversation.title)")
-                    // Đảm bảo update trên main thread
-                    Task { @MainActor in
-                        // Clear navigation path trước
-                        let currentCount = navigationPath.count
-                        if currentCount > 0 {
-                            navigationPath.removeLast(currentCount)
-                        }
-                        print("🔄 Cleared navigation path, count: \(navigationPath.count)")
-                        // Đợi một chút để đảm bảo clear hoàn tất
-                        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 giây
-                        // Append conversation mới
-                        navigationPath.append(conversation)
-                        print("🔄 Appended conversation, new count: \(navigationPath.count)")
-                    }
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("NavigateToHome"))) { _ in
-                // Nhận notification từ ChatView khi bấm home button
-                // Clear navigation path để về home
-                navigationPath.removeLast(navigationPath.count)
-            }
-            .sheet(isPresented: $showingPaywall) {
+            .navigationDestination(for: PaywallDestination.self) { _ in
                 PaywallView()
                     .onDisappear {
                         // Refresh subscription status sau khi đóng PaywallView
@@ -123,7 +98,7 @@ struct HomeView: View {
                         selectedFileData: $selectedFileData,
                         onTranscribeSuccess: { conversation in
                             // Navigate đến ChatView với conversation mới
-                            navigationPath.append(conversation)
+                            navigationCoordinator.navigateToConversation(conversation)
                         }
                     )
                     .transition(.move(edge: .bottom))
@@ -132,19 +107,33 @@ struct HomeView: View {
             }
             .navigationDestination(for: Conversation.self) { conversation in
                 ChatView(conversation: conversation)
+                    .environmentObject(navigationCoordinator)
             }
             .overlay(alignment: .leading) {
                 // Conversation List Drawer
                 ConversationListDrawer(
                     isPresented: $showingConversationListDrawer,
+                    navigationCoordinator: navigationCoordinator,
                     onConversationSelected: { conversation in
-                        navigationPath.append(conversation)
+                        navigationCoordinator.navigateToConversation(conversation)
                     },
                     onHomeSelected: {
-                        // Clear navigation path để về home
-                        navigationPath.removeLast(navigationPath.count)
+                        navigationCoordinator.navigateToHome()
+                    },
+                    onSettingsSelected: {
+                        showingSettings = true
                     }
                 )
+            }
+            .environmentObject(navigationCoordinator)
+            .overlay(alignment: .bottom) {
+                if showingSettings {
+                    SettingsView()
+                        .environmentObject(authViewModel)
+                        .environmentObject(navigationCoordinator)
+                        .transition(.move(edge: .bottom))
+                        .zIndex(1000)
+                }
             }
         }
         .sheet(isPresented: $showingImageVideoPicker) {
@@ -192,7 +181,7 @@ struct HomeView: View {
             
             // Subscription Badge - Clickable
             Button(action: {
-                showingPaywall = true
+                navigationCoordinator.navigationPath.append(PaywallDestination())
             }) {
                 SubscriptionBadge(isPro: hasActiveSubscription)
             }

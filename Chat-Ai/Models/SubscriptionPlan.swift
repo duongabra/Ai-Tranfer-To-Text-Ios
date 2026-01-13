@@ -25,6 +25,7 @@ struct SubscriptionPlan: Identifiable {
         case free = "free"
         case weekly = "com.whales.freechat.weekly"
         case monthly = "com.whales.freechat.monthly"
+        case yearly = "com.whales.freechat.yearly"
     }
     
     // MARK: - Initializers
@@ -59,6 +60,8 @@ struct SubscriptionPlan: Identifiable {
             return "Weekly Premium"
         case .monthly:
             return "Monthly Premium"
+        case .yearly:
+            return "Yearly"
         }
     }
     
@@ -81,7 +84,9 @@ struct SubscriptionPlan: Identifiable {
         case .weekly:
             return "Unlimited messages, GPT-4 access"
         case .monthly:
-            return "Best value! Save 40% vs Weekly"
+            return ""
+        case .yearly:
+            return "Best value"
         }
     }
     
@@ -104,7 +109,9 @@ struct SubscriptionPlan: Identifiable {
         case .weekly:
             return "$2.99"
         case .monthly:
-            return "$9.99"
+            return "$199"
+        case .yearly:
+            return "$199"
         }
     }
     
@@ -130,6 +137,8 @@ struct SubscriptionPlan: Identifiable {
             return "per week"
         case .monthly:
             return "per month"
+        case .yearly:
+            return "per year"
         }
     }
     
@@ -158,6 +167,13 @@ struct SubscriptionPlan: Identifiable {
                 "Early access to new features",
                 "Premium support"
             ]
+        case .yearly:
+            return [
+                "All Monthly features",
+                "Save 30%",
+                "Best value",
+                "Unlimited analyzing"
+            ]
         }
     }
     
@@ -169,6 +185,8 @@ struct SubscriptionPlan: Identifiable {
         case .weekly:
             return "star.fill"
         case .monthly:
+            return "crown.fill"
+        case .yearly:
             return "crown.fill"
         }
     }
@@ -182,12 +200,19 @@ struct SubscriptionPlan: Identifiable {
             return "blue"
         case .monthly:
             return "purple"
+        case .yearly:
+            return "orange"
         }
     }
     
     /// Có phải gói premium không?
     var isPremium: Bool {
         return type != .free
+    }
+    
+    /// Có phải gói yearly không?
+    var isYearly: Bool {
+        return type == .yearly
     }
 }
 

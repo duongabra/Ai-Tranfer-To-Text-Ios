@@ -22,14 +22,23 @@ class ConversationListViewModel: ObservableObject {
     
     /// Load tất cả conversations từ database
     func loadConversations() async {
+        // ✅ Skip nếu đang loading (tránh gọi nhiều lần)
+        guard !isLoading else {
+            return
+        }
+        
         // ✅ Cancel previous task nếu đang chạy
         loadTask?.cancel()
         
+        // ✅ Reset isLoading về false khi cancel task cũ
+        if loadTask != nil {
+            isLoading = false
+        }
+        
         // ✅ Tạo task mới
         loadTask = Task {
-            // Skip nếu đang loading
-            guard !isLoading else {
-                print("⚠️ Already loading, skipping...")
+            // Check lại sau khi task được tạo (có thể đã bị cancel)
+            guard !Task.isCancelled else {
                 return
             }
             
@@ -39,10 +48,13 @@ class ConversationListViewModel: ObservableObject {
             do {
                 // Gọi service để fetch data
                 conversations = try await SupabaseService.shared.fetchConversations()
-                print("✅ Loaded \(conversations.count) conversations")
+                // Chỉ print khi task không bị cancel
+                if !Task.isCancelled {
+                    print("✅ Loaded \(conversations.count) conversations")
+                }
             } catch is CancellationError {
-                // ⚠️ Task bị cancel (pull-to-refresh bị hủy) → Không hiển thị lỗi
-                print("⚠️ Load conversations cancelled")
+                // Task bị cancel → Không làm gì, không in log
+                return
             } catch {
                 // ✅ Kiểm tra nếu là lỗi 401 Unauthorized → Logout
                 if let supabaseError = error as? SupabaseError, supabaseError == .unauthorized {
@@ -50,12 +62,17 @@ class ConversationListViewModel: ObservableObject {
                     return
                 }
                 
-                // Nếu có lỗi khác, lưu message để hiển thị
-                errorMessage = "Cannot load list: \(error.localizedDescription)"
-                print("❌ Error loading conversations: \(error)")
+                // Chỉ hiển thị lỗi nếu task không bị cancel
+                if !Task.isCancelled {
+                    errorMessage = "Cannot load list: \(error.localizedDescription)"
+                    print("❌ Error loading conversations: \(error)")
+                }
             }
             
-            isLoading = false
+            // Chỉ reset isLoading nếu task không bị cancel
+            if !Task.isCancelled {
+                isLoading = false
+            }
         }
         
         await loadTask?.value

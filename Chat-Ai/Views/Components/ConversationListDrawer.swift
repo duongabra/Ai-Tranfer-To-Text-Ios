@@ -12,13 +12,14 @@ struct ConversationListDrawer: View {
     @Binding var isPresented: Bool
     @StateObject private var viewModel = ConversationListViewModel()
     @EnvironmentObject var authViewModel: AuthViewModel
+    @ObservedObject var navigationCoordinator: NavigationCoordinator
     
     @State private var searchText = ""
-    @State private var showingSettings = false
     @FocusState private var isSearchFocused: Bool
     
     var onConversationSelected: ((Conversation) -> Void)?
     var onHomeSelected: (() -> Void)?
+    var onSettingsSelected: (() -> Void)?
     
     var body: some View {
         ZStack(alignment: .leading) {
@@ -39,8 +40,11 @@ struct ConversationListDrawer: View {
                     .transition(.move(edge: .leading))
             }
         }
-        .task {
-            await viewModel.loadConversations()
+        .task(id: isPresented) {
+            // Chỉ load conversations khi drawer được mở (isPresented = true)
+            if isPresented {
+                await viewModel.loadConversations()
+            }
         }
     }
     
@@ -266,7 +270,14 @@ struct ConversationListDrawer: View {
                 
                 // Settings button
                 Button(action: {
-                    showingSettings = true
+                    // Đóng drawer trước
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        isPresented = false
+                    }
+                    // Sau đó mở SettingsView với delay nhỏ để drawer đóng xong
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        onSettingsSelected?()
+                    }
                 }) {
                     Image("settings_button_drawer")
                         .resizable()
@@ -278,10 +289,6 @@ struct ConversationListDrawer: View {
             .padding(EdgeInsets(top: 16, leading: 16, bottom: 32, trailing: 16))
         }
         .background(Color.white)
-        .sheet(isPresented: $showingSettings) {
-            // TODO: Settings view
-            Text("Settings")
-        }
     }
     
     // MARK: - Format User Name

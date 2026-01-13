@@ -55,20 +55,58 @@ extension Color {
 
 // MARK: - Typography
 extension Font {
+    // Default App Font - body/text-body-sm
+    // Font family: Overused Grotesk
+    // Font size: 14px
+    // Font weight: 400 (regular)
+    // Line height: 20px (142.857%)
+    // Font variant numeric: lining-nums tabular-nums
+    static let appDefault = Font.custom("Overused Grotesk", size: 14)
+        .weight(.regular)
+        .monospacedDigit() // lining-nums tabular-nums equivalent
+    
     // Heading Large - 28px, weight 600, line-height 36px (128.571%)
-    static let headingLarge = Font.system(size: 28, weight: .semibold)
+    static let headingLarge = Font.custom("Overused Grotesk", size: 28)
+        .weight(.semibold)
     
     // Body Medium - 14px, weight 400, line-height 19.6px (140%)
-    static let bodyMedium = Font.system(size: 14, weight: .regular)
+    static let bodyMedium = Font.custom("Overused Grotesk", size: 14)
+        .weight(.regular)
     
     // Label Large - 18px, weight 600, line-height 28px (155.556%)
-    static let labelLarge = Font.system(size: 18, weight: .semibold)
+    static let labelLarge = Font.custom("Overused Grotesk", size: 18)
+        .weight(.semibold)
     
     // Label Medium (Button) - 16px, weight 600
-    static let labelMedium = Font.system(size: 16, weight: .semibold)
+    static let labelMedium = Font.custom("Overused Grotesk", size: 16)
+        .weight(.semibold)
     
     // Body XS - 13px, weight 400, line-height 16px (123.077%)
-    static let bodyXS = Font.system(size: 13, weight: .regular)
+    static let bodyXS = Font.custom("Overused Grotesk", size: 13)
+        .weight(.regular)
+    
+    // Body Small - 14px, weight 400, line-height 20px (142.857%)
+    static let bodySmall = Font.custom("Overused Grotesk", size: 14)
+        .weight(.regular)
+        .monospacedDigit()
+}
+
+// MARK: - Line Height
+extension View {
+    /// Apply line height cho text
+    /// - Parameter lineHeight: Line height value (e.g., 20 for 20px)
+    func lineHeight(_ lineHeight: CGFloat) -> some View {
+        self.modifier(LineHeightModifier(lineHeight: lineHeight))
+    }
+}
+
+struct LineHeightModifier: ViewModifier {
+    let lineHeight: CGFloat
+    
+    func body(content: Content) -> some View {
+        content
+            .lineSpacing(lineHeight - 14) // 20 - 14 = 6px spacing for 14px font
+    }
 }
 
 // MARK: - Spacing

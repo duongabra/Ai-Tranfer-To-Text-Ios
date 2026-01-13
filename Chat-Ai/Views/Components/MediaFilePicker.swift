@@ -57,20 +57,21 @@ struct MediaFilePicker: UIViewControllerRepresentable {
                 return
             }
             
-            // Kiểm tra file size (300MB = 300 * 1024 * 1024 bytes)
-            let maxSize: Int64 = 300 * 1024 * 1024
-            
-            do {
-                let resourceValues = try url.resourceValues(forKeys: [.fileSizeKey])
-                if let fileSize = resourceValues.fileSize, fileSize > maxSize {
-                    print("❌ File size (\(fileSize) bytes) exceeds 300MB limit")
-                    return
-                }
-                
-                // Đọc file data
+            // Đọc file data trước (để validation có thể làm ở modal level)
                 guard let data = try? Data(contentsOf: url) else {
                     print("❌ Failed to read file data")
                     return
+                }
+                
+            // Kiểm tra file size (300MB = 300 * 1024 * 1024 bytes)
+            // Note: Validation sẽ được làm ở UploadFileModal để hiển thị toast
+            let maxSize: Int64 = 300 * 1024 * 1024
+            let fileSize = Int64(data.count)
+            
+            do {
+                // Vẫn log warning nhưng không block, để modal xử lý validation và hiển thị toast
+                if fileSize > maxSize {
+                    print("⚠️ File size (\(fileSize) bytes) exceeds 300MB limit - will show toast in modal")
                 }
                 
                 // Xác định loại file

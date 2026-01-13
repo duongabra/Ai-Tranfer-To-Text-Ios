@@ -86,7 +86,7 @@ struct ConversationListView: View {
                         showingNewConversationSheet = true
                     }) {
                         Image(systemName: "plus.circle.fill")
-                            .font(.title2)
+                            .font(.custom("Overused Grotesk", size: 22))
                     }
                 }
             }
@@ -153,15 +153,16 @@ struct ConversationListView: View {
     private var emptyStateView: some View {
         VStack(spacing: 20) {
             Image(systemName: "bubble.left.and.bubble.right")
-                .font(.system(size: 60))
+                .font(.custom("Overused Grotesk", size: 60))
                 .foregroundColor(.gray)
             
             Text("No conversations yet")
-                .font(.title2)
+                .font(.custom("Overused Grotesk", size: 22))
+                .fontWeight(.semibold)
                 .fontWeight(.semibold)
             
             Text("Tap + to start chatting with AI")
-                .font(.body)
+                .font(.custom("Overused Grotesk", size: 17))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 16)
@@ -191,11 +192,12 @@ struct ConversationRow: View {
         VStack(alignment: .leading, spacing: 8) {
             // Tiêu đề conversation
             Text(conversation.title)
-                .font(.headline)
+                .font(.custom("Overused Grotesk", size: 17))
+                .fontWeight(.semibold)
             
             // Thời gian cập nhật cuối
             Text(formatDate(conversation.updatedAt))
-                .font(.caption)
+                .font(.custom("Overused Grotesk", size: 12))
                 .foregroundColor(.secondary)
         }
         .padding(.vertical, 4)

@@ -113,21 +113,17 @@ struct PhotoLibraryPicker: UIViewControllerRepresentable {
                         return
                     }
                     
-                    // Kiểm tra file size
-                    do {
-                        let resourceValues = try url.resourceValues(forKeys: [.fileSizeKey])
-                        if let fileSize = resourceValues.fileSize, fileSize > maxSize {
-                            print("❌ File size (\(fileSize) bytes) exceeds 300MB limit")
-                            return
-                        }
-                    } catch {
-                        print("⚠️ Could not check file size: \(error)")
-                    }
-                    
-                    // Đọc file data
+                    // Đọc file data trước (để validation có thể làm ở modal level)
                     guard let data = try? Data(contentsOf: url) else {
                         print("❌ Failed to read file data")
                         return
+                    }
+                    
+                    // Kiểm tra file size
+                    // Note: Validation sẽ được làm ở UploadFileModal để hiển thị toast
+                    let fileSize = Int64(data.count)
+                    if fileSize > maxSize {
+                        print("⚠️ File size (\(fileSize) bytes) exceeds 300MB limit - will show toast in modal")
                     }
                     
                     DispatchQueue.main.async {

@@ -22,13 +22,15 @@ struct LinkIcon: View {
             ZStack {
                 // Glow effect (shadow layer)
                 Image(systemName: "link")
-                    .font(.system(size: size * 0.4, weight: .semibold))
+                    .font(.custom("Overused Grotesk", size: size * 0.4))
+                    .fontWeight(.semibold)
                     .foregroundColor(.white.opacity(0.4))
                     .blur(radius: 1.5)
                 
                 // Main link icon
                 Image(systemName: "link")
-                    .font(.system(size: size * 0.4, weight: .semibold))
+                    .font(.custom("Overused Grotesk", size: size * 0.4))
+                    .fontWeight(.semibold)
                     .foregroundColor(.textWhite)
             }
         }

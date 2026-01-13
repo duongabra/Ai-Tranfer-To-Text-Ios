@@ -22,12 +22,13 @@ struct UploadIcon: View {
             VStack(spacing: size * 0.15) {
                 // Cloud icon
                 Image(systemName: "cloud.fill")
-                    .font(.system(size: size * 0.35))
+                    .font(.custom("Overused Grotesk", size: size * 0.35))
                     .foregroundColor(.textWhite)
                 
                 // Arrow up
                 Image(systemName: "arrow.up")
-                    .font(.system(size: size * 0.28, weight: .bold))
+                    .font(.custom("Overused Grotesk", size: size * 0.28))
+                    .fontWeight(.bold)
                     .foregroundColor(.textWhite)
             }
         }

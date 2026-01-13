@@ -8,6 +8,7 @@
 import SwiftUI
 import UIKit
 import AVKit
+import AVFoundation
 
 // MARK: - Upload Status
 
@@ -24,10 +25,15 @@ struct UploadFileModal: View {
     @Binding var selectedFile: FileAttachment?
     @Binding var selectedFileData: Data?
     
+    // Callback khi transcribe thành công và tạo conversation xong
+    var onTranscribeSuccess: ((Conversation) -> Void)?
+    
     @State private var showingUnifiedPicker = false
     @State private var uploadStatus: UploadStatus = .idle
     @State private var uploadedFileURL: String? = nil
     @State private var isUploaded: Bool = false // Flag để track xem đã upload thành công chưa
+    @State private var previousFileId: String? = nil // Track file cũ để phát hiện file mới
+    @State private var toastMessage: String? = nil // Toast message để hiển thị lỗi
     
     // Giới hạn file size: 300MB
     private let maxFileSize: Int64 = 300 * 1024 * 1024
@@ -65,6 +71,15 @@ struct UploadFileModal: View {
         .ignoresSafeArea(edges: .bottom)
         .transition(.opacity)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isPresented)
+        .overlay(alignment: .top) {
+            // Toast message - đặt ở top với zIndex cao để không bị che
+            if let toast = toastMessage {
+                toastView(message: toast)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .animation(.spring(response: 0.3, dampingFraction: 0.8), value: toastMessage)
+                    .zIndex(9999)
+            }
+        }
         .sheet(isPresented: $showingUnifiedPicker) {
             UnifiedMediaPicker(
                 selectedFile: $selectedFile,
@@ -72,17 +87,50 @@ struct UploadFileModal: View {
             )
         }
         .onChange(of: selectedFile) { newFile in
-            // Nếu đã upload thành công, không xử lý onChange để tránh reset về preview
-            if isUploaded {
+            // Tạo ID để so sánh file (dùng name + url)
+            let newFileId = newFile.map { "\($0.name)-\($0.url)" }
+            
+            // So sánh với file cũ TRƯỚC khi cập nhật previousFileId
+            let isNewFile: Bool
+            if let newFileId = newFileId, let previousId = previousFileId {
+                isNewFile = newFileId != previousId
+            } else {
+                isNewFile = newFile != nil // Nếu không có previousId, coi như file mới
+            }
+            
+            // Nếu chọn file mới (khác file cũ), clear file cũ và reset state
+            if isNewFile {
+                // File mới được chọn từ edit button, clear state cũ
+                uploadStatus = .idle
+                uploadedFileURL = nil
+                isUploaded = false
+                // Note: selectedFileData sẽ được cập nhật tự động từ UnifiedMediaPicker
+            }
+            
+            // Cập nhật previousFileId SAU khi đã xử lý
+            previousFileId = newFileId
+            
+            // Nếu đã upload thành công và không phải file mới, không xử lý onChange
+            if isUploaded && !isNewFile {
                 print("⚠️ Ignoring onChange because file already uploaded (isUploaded = true)")
                 return
             }
-            // Nếu đang ở success state, không xử lý onChange để tránh reset về preview
-            if case .success = uploadStatus {
+            
+            // Nếu đang ở success state và không phải file mới, không xử lý onChange
+            if case .success = uploadStatus, !isNewFile {
                 print("⚠️ Ignoring onChange because already in success state")
                 return
             }
+            
             handleFileSelection(newFile)
+        }
+        .onChange(of: selectedFileData) { newData in
+            // Khi selectedFileData thay đổi, đảm bảo preview được cập nhật
+            // Nếu có file và data mới, validate lại
+            if let file = selectedFile, let data = newData {
+                // Luôn validate file khi có data mới (bao gồm cả file quá lớn)
+                validateAndSetFile(file: file, data: data)
+            }
         }
     }
     
@@ -113,7 +161,7 @@ struct UploadFileModal: View {
                 isPresented = false
             }) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 16))
+                    .font(.custom("Overused Grotesk", size: 16))
                     .foregroundColor(.clear)
                     .frame(width: 28, height: 28)
             }
@@ -130,10 +178,10 @@ struct UploadFileModal: View {
             
             // Close button (right)
             Button(action: {
-                isPresented = false
+                isPresented = false 
             }) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 16))
+                    .font(.custom("Overused Grotesk", size: 16))
                     .foregroundColor(.textPrimary)
                     .frame(width: 28, height: 28)
             }
@@ -154,35 +202,50 @@ struct UploadFileModal: View {
     
     @ViewBuilder
     private var statusContentView: some View {
-        Group {
-            switch uploadStatus {
-            case .idle:
-                uploadAreaView
-                    .onAppear {
-                        print("📋 Current status: .idle")
-                    }
-            case .preview:
-                previewView
-                    .onAppear {
-                        print("📋 Current status: .preview")
-                    }
-            case .loading:
-                loadingView
-                    .onAppear {
-                        print("📋 Current status: .loading")
-                    }
-            case .success:
-                successView
-                    .onAppear {
-                        print("✅ Success view is being displayed - uploadStatus = .success")
-                    }
-            case .failed(let errorMessage):
-                failedView(errorMessage: errorMessage)
-                    .onAppear {
-                        print("❌ Current status: .failed(\(errorMessage))")
-                    }
+        // Container chung với dashed border cho tất cả states
+        ZStack(alignment: .topTrailing) {
+            // Content - căn giữa
+            Group {
+                switch uploadStatus {
+                case .idle:
+                    uploadAreaView
+                case .preview:
+                    previewContent
+                case .loading:
+                    loadingContent
+                case .success:
+                    successContent
+                case .failed(let errorMessage):
+                    failedContent(errorMessage: errorMessage)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            
+            // Edit button hiển thị ở preview và success state, ở góc trên cùng bên phải của container
+            if (uploadStatus == .preview || uploadStatus == .success), selectedFile != nil {
+                Button(action: {
+                    // Chỉ mở file picker, không clear state ngay
+                    // File cũ sẽ được clear khi chọn file mới
+                    showingUnifiedPicker = true
+                }) {
+                    Image("edit_button")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 16, height: 16)
+                }
+                .padding(6)
+                .offset(x: 8, y: -16)
             }
         }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+        .padding(.horizontal, 16)
+        .background(Color.primaryOrange.opacity(0.05))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color(hex: "#D87757"), style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
+        )
+        .cornerRadius(16)
     }
     
     @ViewBuilder
@@ -249,7 +312,7 @@ struct UploadFileModal: View {
     
     // MARK: - Views
     
-    /// Upload area view (idle state)
+    /// Upload area view (idle state) - State 1
     private var uploadAreaView: some View {
         VStack(spacing: 16) {
             // Icon
@@ -267,7 +330,7 @@ struct UploadFileModal: View {
             // Title
             VStack(spacing: 4) {
                 Text("Upload Audio or Video")
-                    .font(Font.custom("Overused Grotesk", size: 16).weight(.semibold))
+                    .font(Font.custom("Overused Grotesk", size: 16).weight(.bold))
                     .foregroundColor(Color(hex: "#020202"))
                     .multilineTextAlignment(.center)
                     .lineSpacing(24 - 16)
@@ -292,23 +355,44 @@ struct UploadFileModal: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-        .padding(.horizontal, 16)
-        .background(Color.primaryOrange.opacity(0.05))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.primaryOrange, style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
-        )
-        .cornerRadius(16)
         .contentShape(Rectangle())
         .onTapGesture {
             showingUnifiedPicker = true
         }
     }
     
-    /// Loading view
-    private var loadingView: some View {
+    /// Preview content (State 2) - chỉ nội dung bên trong, căn giữa
+    private var previewContent: some View {
+        VStack(spacing: 16) {
+            // File preview - thumbnail nhỏ 85x48
+            if let file = selectedFile, let data = selectedFileData {
+                // Preview từ data local - thumbnail nhỏ như success state
+                // Dùng .id() để force refresh khi file hoặc data thay đổi
+                LocalFilePreviewView(file: file, data: data)
+                    .id("\(file.name)-\(data.count)") // Unique ID để force refresh
+                    .frame(width: 85, height: 48)
+                    .cornerRadius(4)
+                    .clipped()
+                
+                // File info - căn giữa
+                VStack(alignment: .center, spacing: 4) {
+                    Text(formatFileName(file.name))
+                        .font(.custom("Overused Grotesk", size: 16).weight(.bold))
+                        .foregroundColor(Color(hex: "#020202"))
+                        .lineLimit(1)
+                        .multilineTextAlignment(.center)
+                    
+                    Text(formatFileSize(data.count))
+                        .font(.custom("Overused Grotesk", size: 13))
+                        .foregroundColor(Color(hex: "#717171"))
+                        .multilineTextAlignment(.center)
+                }
+            }
+        }
+    }
+    
+    /// Loading content (State 3) - chỉ nội dung bên trong
+    private var loadingContent: some View {
         VStack(spacing: 16) {
             // Spinner icon (48x48)
             ProgressView()
@@ -319,7 +403,7 @@ struct UploadFileModal: View {
             // Text
             VStack(spacing: 4) {
                 Text("Uploading...")
-                    .font(.custom("Overused Grotesk", size: 16).weight(.semibold))
+                    .font(.custom("Overused Grotesk", size: 16).weight(.bold))
                     .foregroundColor(Color(hex: "#020202"))
                     .multilineTextAlignment(.center)
                 
@@ -332,140 +416,55 @@ struct UploadFileModal: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-        .padding(.horizontal, 16)
-        .background(Color.primaryOrange.opacity(0.05))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.primaryOrange, style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
-        )
-        .cornerRadius(16)
     }
     
-    /// Preview view (trước khi upload)
-    private var previewView: some View {
-        VStack(spacing: 12) {
-            // File preview
-            if let file = selectedFile, let data = selectedFileData {
-                // Preview từ data local
-                LocalFilePreviewView(file: file, data: data)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 200)
-                
-                // File info
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(file.name)
-                            .font(.custom("Overused Grotesk", size: 14).weight(.semibold))
+    /// Success content (State 4) - chỉ nội dung bên trong, căn giữa
+    private var successContent: some View {
+        VStack(spacing: 16) {
+            // File preview và info
+            if let file = selectedFile {
+                VStack(spacing: 16) {
+                    // Preview thumbnail (85x48)
+                    RemoteFilePreviewView(file: file)
+                        .frame(width: 85, height: 48)
+                        .cornerRadius(4)
+                        .clipped()
+                    
+                    // File info (căn giữa)
+                    VStack(alignment: .center, spacing: 4) {
+                        Text(formatFileName(file.name))
+                            .font(.custom("Overused Grotesk", size: 16).weight(.bold))
                             .foregroundColor(Color(hex: "#020202"))
                             .lineLimit(1)
+                            .multilineTextAlignment(.center)
                         
-                        Text(formatFileSize(data.count))
-                            .font(.custom("Overused Grotesk", size: 13))
-                            .foregroundColor(Color(hex: "#717171"))
-                    }
-                    
-                    Spacer()
-                    
-                    // Edit icon (placeholder - sẽ implement sau)
-                    Button(action: {
-                        // TODO: Edit file name
-                    }) {
-                        Image(systemName: "pencil")
-                            .font(.system(size: 16))
-                            .foregroundColor(Color(hex: "#FF0000"))
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .background(Color.primaryOrange.opacity(0.05))
-        .cornerRadius(16)
-        .padding(.horizontal, 16)
-    }
-    
-    /// Success view
-    private var successView: some View {
-        ZStack(alignment: .topTrailing) {
-            // Content - căn giữa hoàn toàn
-            VStack(spacing: 16) {
-                // File preview và info
-                if let file = selectedFile {
-                    VStack(spacing: 16) {
-                        // Preview thumbnail (85x48 với padding 4px bên trong)
-                        ZStack {
-                            RemoteFilePreviewView(file: file)
-                                .frame(width: 85, height: 48)
-                                .cornerRadius(4)
-                                .clipped()
-                        }
-                        .padding(4)
-                        
-                        // File info (căn giữa)
-                        VStack(alignment: .center, spacing: 4) {
-                            Text(file.name)
-                                .font(.custom("Overused Grotesk", size: 16).weight(.semibold))
-                                .foregroundColor(Color(hex: "#020202"))
-                                .lineLimit(1)
+                        if let size = file.size {
+                            Text(formatFileSize(size))
+                                .font(.custom("Overused Grotesk", size: 13))
+                                .foregroundColor(Color(hex: "#717171"))
                                 .multilineTextAlignment(.center)
-                            
-                            if let size = file.size {
-                                Text(formatFileSize(size))
-                                    .font(.custom("Overused Grotesk", size: 13))
-                                    .foregroundColor(Color(hex: "#717171"))
-                                    .multilineTextAlignment(.center)
-                            }
                         }
                     }
                 }
             }
-            .frame(maxWidth: .infinity)
-            .padding(24)
-            
-            // Edit button ở góc trên phải (absolute position)
-            if selectedFile != nil {
-                Button(action: {
-                    // TODO: Edit file name
-                }) {
-                    Image(systemName: "pencil")
-                        .font(.system(size: 12))
-                        .foregroundColor(Color(hex: "#CC0A00"))
-                        .frame(width: 24, height: 24)
-                }
-                .padding(6)
-                .offset(x: -8, y: 8)
-            }
         }
-        .frame(maxWidth: .infinity)
-        .background(Color.primaryOrange.opacity(0.05))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color(hex: "#D87757"), style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
-        )
-        .cornerRadius(16)
     }
     
-    /// Failed view
-    private func failedView(errorMessage: String) -> some View {
+    /// Failed content - chỉ nội dung bên trong
+    private func failedContent(errorMessage: String) -> some View {
         VStack(spacing: 16) {
             // Error icon (48x48 với màu #FF3D33)
             ZStack {
-                Circle()
-                    .fill(Color(hex: "#FF3D33").opacity(0.1))
+                Image("error_icon")
+                    .resizable()
+                    .scaledToFit()
                     .frame(width: 48, height: 48)
-                
-                Image(systemName: "exclamationmark")
-                    .font(.system(size: 24))
-                    .foregroundColor(Color(hex: "#FF3D33"))
             }
             
             // Error text
             VStack(spacing: 4) {
                 Text("Upload Failed")
-                    .font(.custom("Overused Grotesk", size: 16).weight(.semibold))
+                    .font(.custom("Overused Grotesk", size: 16).weight(.bold))
                     .foregroundColor(Color(hex: "#020202"))
                     .multilineTextAlignment(.center)
                 
@@ -476,15 +475,38 @@ struct UploadFileModal: View {
                     .lineLimit(2)
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
+    }
+    
+    // MARK: - Toast View
+    
+    /// Toast message hiển thị lỗi
+    private func toastView(message: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(.white)
+                .font(.custom("Overused Grotesk", size: 16))
+            
+            Text(message)
+                .font(.custom("Overused Grotesk", size: 14))
+                .foregroundColor(.white)
+            
+            Spacer()
+            
+            Button(action: {
+                toastMessage = nil
+            }) {
+                Image(systemName: "xmark")
+                    .foregroundColor(.white)
+                    .font(.custom("Overused Grotesk", size: 14))
+            }
+        }
         .padding(.horizontal, 16)
-        .background(Color.primaryOrange.opacity(0.05))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color(hex: "#D87757"), style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
-        )
-        .cornerRadius(16)
+        .padding(.vertical, 12)
+        .background(Color(hex: "#FF3D33"))
+        .cornerRadius(8)
+        .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
     }
     
     // MARK: - Helpers
@@ -502,7 +524,19 @@ struct UploadFileModal: View {
         let fileSize = Int64(data.count)
         
         if fileSize > maxFileSize {
-            uploadStatus = .failed("File size exceeds 300MB limit")
+            // Hiển thị toast error
+            toastMessage = "File size exceeds 300MB limit"
+            // Auto dismiss toast sau 3 giây
+            Task {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                await MainActor.run {
+                    toastMessage = nil
+                }
+            }
+            // Reset về idle state
+            uploadStatus = .idle
+            selectedFile = nil
+            selectedFileData = nil
         } else {
             // File hợp lệ, hiển thị preview (chưa upload)
             // Chỉ set preview nếu chưa ở success state
@@ -529,7 +563,7 @@ struct UploadFileModal: View {
         
         Task {
             do {
-                // Upload file lên Supabase Storage với maxSize 300MB
+                // Bước 1: Upload file lên Supabase Storage với maxSize 300MB
                 let fileURL = try await StorageService.shared.uploadFile(
                     data: data,
                     fileName: file.name,
@@ -537,22 +571,102 @@ struct UploadFileModal: View {
                     customMaxSize: Int(maxFileSize)
                 )
                 
-                await MainActor.run {
-                    uploadedFileURL = fileURL
+                print("✅ File uploaded successfully: \(fileURL)")
+                
+                // Bước 2: Nếu là video hoặc audio → Transcribe
+                if file.type == .video || file.type == .audio {
+                    await MainActor.run {
+                        uploadStatus = .loading
+                    }
                     
-                    // Set flag và success status TRƯỚC khi cập nhật selectedFile
-                    // để tránh onChange trigger và reset về preview
-                    isUploaded = true
-                    uploadStatus = .success
-                    print("✅ Upload successful, status changed to .success, isUploaded = true")
+                    print("🎵 Starting transcription for \(file.type.rawValue)...")
                     
-                    // Cập nhật selectedFile với URL mới sau khi đã set success
-                    selectedFile = FileAttachment(
-                        url: fileURL,
-                        name: file.name,
-                        type: file.type,
-                        size: file.size
+                    // Gọi TranscribeService
+                    let userId = 8042467986 // Fixed user_id for transcribe API
+                    let transcription: String
+                    
+                    if file.type == .audio {
+                        // Transcribe audio
+                        transcription = try await TranscribeService.shared.transcribeAudio(
+                            audioData: data,
+                            fileName: file.name,
+                            userId: userId
+                        )
+                    } else {
+                        // Transcribe video (sử dụng file URL)
+                        print("📹 Calling transcribeVideoURL with URL: \(fileURL)")
+                        let transcribeStartTime = Date()
+                        transcription = try await TranscribeService.shared.transcribeVideoURL(
+                            videoURL: fileURL,
+                            userId: userId
+                        )
+                        let transcribeElapsed = Date().timeIntervalSince(transcribeStartTime)
+                        print("⏱️ Transcription took \(String(format: "%.2f", transcribeElapsed)) seconds")
+                    }
+                    
+                    print("✅ Transcription successful: \(transcription.prefix(100))...")
+                    
+                    // Bước 3: Tạo conversation mới với title = fileName (không có extension)
+                    let conversationTitle = (file.name as NSString).deletingPathExtension
+                    let newConversation = try await SupabaseService.shared.createConversation(title: conversationTitle)
+                    
+                    print("✅ Conversation created: \(newConversation.id)")
+                    
+                    // Bước 4: Tạo message đầu tiên với transcription text
+                    let firstMessage = try await SupabaseService.shared.createMessage(
+                        conversationId: newConversation.id,
+                        role: .user,
+                        content: transcription,
+                        fileUrl: fileURL,
+                        fileName: file.name,
+                        fileType: file.type.rawValue,
+                        fileSize: data.count
                     )
+                    
+                    print("✅ First message created: \(firstMessage.id)")
+                    
+                    // Bước 5: Cập nhật timestamp của conversation
+                    try await SupabaseService.shared.updateConversationTimestamp(conversationId: newConversation.id)
+                    
+                    // Bước 6: Navigate đến ChatView
+                    await MainActor.run {
+                        uploadStatus = .success
+                        isUploaded = true
+                        uploadedFileURL = fileURL
+                        
+                        // Cập nhật selectedFile với URL mới
+                        selectedFile = FileAttachment(
+                            url: fileURL,
+                            name: file.name,
+                            type: file.type,
+                            size: file.size
+                        )
+                        
+                        // Đóng modal
+                        isPresented = false
+                        
+                        // Call callback để navigate đến ChatView
+                        onTranscribeSuccess?(newConversation)
+                    }
+                } else {
+                    // Không phải video/audio → chỉ upload và hiển thị success
+                    await MainActor.run {
+                        uploadedFileURL = fileURL
+                        
+                        // Set flag và success status TRƯỚC khi cập nhật selectedFile
+                        // để tránh onChange trigger và reset về preview
+                        isUploaded = true
+                        uploadStatus = .success
+                        print("✅ Upload successful, status changed to .success, isUploaded = true")
+                        
+                        // Cập nhật selectedFile với URL mới sau khi đã set success
+                        selectedFile = FileAttachment(
+                            url: fileURL,
+                            name: file.name,
+                            type: file.type,
+                            size: file.size
+                        )
+                    }
                 }
             } catch {
                 await MainActor.run {
@@ -575,6 +689,32 @@ struct UploadFileModal: View {
         formatter.countStyle = .file
         return formatter.string(fromByteCount: Int64(bytes))
     }
+    
+    /// Format file name: giới hạn max 20 ký tự, nếu dài quá thì "xxx....mp4"
+    private func formatFileName(_ fileName: String) -> String {
+        let maxLength = 20
+        
+        // Lấy extension
+        let fileExtension = (fileName as NSString).pathExtension
+        let nameWithoutExtension = (fileName as NSString).deletingPathExtension
+        
+        // Nếu tên file (không có extension) <= maxLength, trả về nguyên
+        if nameWithoutExtension.count <= maxLength {
+            return fileName
+        }
+        
+        // Nếu có extension, tính toán độ dài phần name
+        let extensionLength = fileExtension.isEmpty ? 0 : fileExtension.count + 1 // +1 cho dấu chấm
+        let availableLength = maxLength - extensionLength - 3 // -3 cho "..."
+        
+        if availableLength > 0 {
+            let truncatedName = String(nameWithoutExtension.prefix(availableLength))
+            return fileExtension.isEmpty ? "\(truncatedName)..." : "\(truncatedName)....\(fileExtension)"
+        } else {
+            // Nếu extension quá dài, chỉ hiển thị extension
+            return fileExtension.isEmpty ? "..." : "....\(fileExtension)"
+        }
+    }
 }
 
 // MARK: - Local File Preview View (từ data local)
@@ -585,68 +725,63 @@ struct LocalFilePreviewView: View {
     let data: Data
     @State private var tempVideoURL: URL?
     @State private var tempAudioURL: URL?
+    @State private var videoThumbnail: UIImage?
     
     var body: some View {
         Group {
             switch file.type {
             case .image:
-                // Image preview từ data
+                // Image preview từ data - thumbnail nhỏ 85x48
                 if let uiImage = UIImage(data: data) {
                     Image(uiImage: uiImage)
                         .resizable()
                         .scaledToFill()
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 200)
+                        .frame(width: 85, height: 48)
                         .clipped()
-                        .cornerRadius(12)
+                        .cornerRadius(4)
                 } else {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.black.opacity(0.1))
-                        .frame(height: 200)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.black.opacity(0.4))
+                        .frame(width: 85, height: 48)
                         .overlay(
                             Image(systemName: "photo")
-                                .font(.system(size: 40))
-                                .foregroundColor(.gray)
+                                .font(.custom("Overused Grotesk", size: 16))
+                                .foregroundColor(.white)
                         )
                 }
                 
             case .video:
-                // Video preview từ data (tạo temp URL)
-                if let tempURL = tempVideoURL {
-                    InlineVideoPlayer(url: tempURL)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 200)
+                // Video preview từ data - chỉ hiển thị thumbnail (frame đầu tiên), không play được
+                if let thumbnail = videoThumbnail {
+                    Image(uiImage: thumbnail)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 85, height: 48)
+                        .clipped()
+                        .cornerRadius(4)
                 } else {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.black.opacity(0.1))
-                        .frame(height: 200)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.black.opacity(0.4))
+                        .frame(width: 85, height: 48)
                         .overlay(
                             ProgressView()
                                 .tint(.white)
                         )
                         .onAppear {
-                            tempVideoURL = createTempVideoURL()
+                            extractVideoThumbnail()
                         }
                 }
                 
             case .audio:
-                // Audio preview
-                if let tempURL = tempAudioURL {
-                    InlineAudioPlayer(url: tempURL, fileName: file.name)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 200)
-                } else {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.primaryOrange.opacity(0.1))
-                        .frame(height: 200)
-                        .overlay(
-                            ProgressView()
-                                .tint(.primaryOrange)
-                        )
-                        .onAppear {
-                            tempAudioURL = createTempAudioURL()
-                        }
-                }
+                // Audio preview - thumbnail nhỏ 85x48
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.black.opacity(0.4))
+                    .frame(width: 85, height: 48)
+                    .overlay(
+                        Image(systemName: "waveform")
+                            .font(.custom("Overused Grotesk", size: 20))
+                            .foregroundColor(.white)
+                    )
                 
             case .other:
                 RoundedRectangle(cornerRadius: 12)
@@ -654,7 +789,7 @@ struct LocalFilePreviewView: View {
                     .frame(height: 200)
                     .overlay(
                         Image(systemName: "doc.fill")
-                            .font(.system(size: 40))
+                            .font(.custom("Overused Grotesk", size: 40))
                             .foregroundColor(.gray)
                     )
             }
@@ -665,17 +800,45 @@ struct LocalFilePreviewView: View {
         }
     }
     
-    /// Tạo temporary URL cho video từ data
-    private func createTempVideoURL() -> URL? {
+    /// Extract thumbnail từ video data (frame đầu tiên)
+    private func extractVideoThumbnail() {
+        // Tạo temp URL từ data
         let tempDir = FileManager.default.temporaryDirectory
         let tempFile = tempDir.appendingPathComponent("\(UUID().uuidString).mp4")
         
-        do {
-            try data.write(to: tempFile)
-            return tempFile
-        } catch {
-            print("❌ Failed to create temp video URL: \(error)")
-            return nil
+        guard (try? data.write(to: tempFile)) != nil else {
+            print("❌ Failed to create temp video URL")
+            return
+        }
+        
+        // Extract thumbnail từ frame đầu tiên
+        let asset = AVAsset(url: tempFile)
+        let imageGenerator = AVAssetImageGenerator(asset: asset)
+        imageGenerator.appliesPreferredTrackTransform = true
+        imageGenerator.requestedTimeToleranceAfter = .zero
+        imageGenerator.requestedTimeToleranceBefore = .zero
+        
+        let time = CMTime(seconds: 0, preferredTimescale: 600)
+        
+        Task {
+            do {
+                let cgImage = try await imageGenerator.image(at: time).image
+                let uiImage = UIImage(cgImage: cgImage)
+                
+                await MainActor.run {
+                    videoThumbnail = uiImage
+                }
+                
+                // Cleanup temp file
+                try? FileManager.default.removeItem(at: tempFile)
+            } catch {
+                print("❌ Failed to extract video thumbnail: \(error)")
+                await MainActor.run {
+                    videoThumbnail = nil
+                }
+                // Cleanup temp file
+                try? FileManager.default.removeItem(at: tempFile)
+            }
         }
     }
     
@@ -739,7 +902,7 @@ struct RemoteFilePreviewView: View {
                             .frame(width: 85, height: 48)
                             .overlay(
                                 Image(systemName: "photo")
-                                    .font(.system(size: 16))
+                                    .font(.custom("Overused Grotesk", size: 16))
                                     .foregroundColor(.white)
                             )
                     @unknown default:
@@ -748,37 +911,31 @@ struct RemoteFilePreviewView: View {
                 }
                 
             case .video:
-                // Video thumbnail (85x48) - chỉ hiển thị thumbnail với play icon
-                ZStack {
-                    // Background với opacity 0.4
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.black.opacity(0.4))
-                        .frame(width: 85, height: 48)
-                    
-                    // Thumbnail image nếu có (từ video URL)
-                    AsyncImage(url: URL(string: file.url)) { phase in
-                        switch phase {
-                        case .empty:
-                            ProgressView()
-                                .tint(.white)
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 85, height: 48)
-                                .clipped()
-                                .cornerRadius(4)
-                        case .failure:
-                            EmptyView()
-                        @unknown default:
-                            EmptyView()
-                        }
+                // Video thumbnail (85x48) - chỉ hiển thị thumbnail, không có play button
+                AsyncImage(url: URL(string: file.url)) { phase in
+                    switch phase {
+                    case .empty:
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.black.opacity(0.4))
+                            .frame(width: 85, height: 48)
+                            .overlay(
+                                ProgressView()
+                                    .tint(.white)
+                            )
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 85, height: 48)
+                            .clipped()
+                            .cornerRadius(4)
+                    case .failure:
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.black.opacity(0.4))
+                            .frame(width: 85, height: 48)
+                    @unknown default:
+                        EmptyView()
                     }
-                    
-                    // Play icon overlay ở giữa
-                    Image(systemName: "play.circle.fill")
-                        .font(.system(size: 20))
-                        .foregroundColor(.white)
                 }
                 
             case .audio:
@@ -788,7 +945,7 @@ struct RemoteFilePreviewView: View {
                     .frame(width: 85, height: 48)
                     .overlay(
                         Image(systemName: "waveform")
-                            .font(.system(size: 20))
+                            .font(.custom("Overused Grotesk", size: 20))
                             .foregroundColor(.white)
                     )
                 
@@ -798,7 +955,7 @@ struct RemoteFilePreviewView: View {
                     .frame(width: 85, height: 48)
                     .overlay(
                         Image(systemName: "doc.fill")
-                            .font(.system(size: 20))
+                            .font(.custom("Overused Grotesk", size: 20))
                             .foregroundColor(.white)
                     )
             }

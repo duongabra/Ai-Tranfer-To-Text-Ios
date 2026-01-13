@@ -18,7 +18,7 @@ struct PrimaryButton: View {
             HStack(spacing: 8) {
                 if let icon = icon {
                     Image(systemName: icon)
-                        .font(.system(size: 20))
+                        .font(.custom("Overused Grotesk", size: 20))
                         .padding(2)
                 }
                 

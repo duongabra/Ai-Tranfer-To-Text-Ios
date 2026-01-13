@@ -16,7 +16,7 @@ enum ButtonIcon {
         switch self {
         case .system(let name):
             Image(systemName: name)
-                .font(.system(size: size))
+                .font(.custom("Overused Grotesk", size: size))
                 .padding(2)
         case .google:
             GoogleIcon(size: size)

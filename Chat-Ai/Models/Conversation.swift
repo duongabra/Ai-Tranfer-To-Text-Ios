@@ -10,7 +10,8 @@ import Foundation
 // Struct Conversation đại diện cho một cuộc trò chuyện
 // Identifiable: để SwiftUI có thể phân biệt các item trong List
 // Codable: để chuyển đổi giữa Swift object và JSON (cho Supabase)
-struct Conversation: Identifiable, Codable {
+// Hashable: để có thể dùng trong NavigationPath
+struct Conversation: Identifiable, Codable, Hashable {
     let id: UUID              // ID duy nhất của cuộc hội thoại
     let userId: UUID          // ID của người dùng sở hữu cuộc hội thoại này
     var title: String         // Tiêu đề của cuộc hội thoại (ví dụ: "Chat về Swift")

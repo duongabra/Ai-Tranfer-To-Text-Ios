@@ -84,7 +84,7 @@ struct LoginView: View {
                     // Error message
                     if let errorMessage = authViewModel.errorMessage {
                         Text(errorMessage)
-                            .font(.caption)
+                            .font(.custom("Overused Grotesk", size: 12))
                             .foregroundColor(.red)
                             .multilineTextAlignment(.center)
                             .padding(.top, 8)

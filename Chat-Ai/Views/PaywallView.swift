@@ -24,15 +24,15 @@ struct PaywallView: View {
                     // MARK: - Header
                     VStack(spacing: 10) {
                         Image(systemName: "crown.fill")
-                            .font(.system(size: 60))
+                            .font(.custom("Overused Grotesk", size: 60))
                             .foregroundColor(.yellow)
                         
                         Text("Upgrade to Premium")
-                            .font(.largeTitle)
+                            .font(.custom("Overused Grotesk", size: 34))
                             .fontWeight(.bold)
                         
                         Text("Unlock unlimited messages and GPT-4 access")
-                            .font(.subheadline)
+                            .font(.custom("Overused Grotesk", size: 15))
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
                     }
@@ -60,7 +60,8 @@ struct PaywallView: View {
                     // MARK: - Features
                     VStack(alignment: .leading, spacing: 15) {
                         Text("Premium Features")
-                            .font(.headline)
+                            .font(.custom("Overused Grotesk", size: 17))
+                            .fontWeight(.semibold)
                         
                         FeatureRow(icon: "infinity", text: "Unlimited messages")
                         FeatureRow(icon: "brain.head.profile", text: "GPT-4 access")
@@ -97,7 +98,7 @@ struct PaywallView: View {
                     // MARK: - Error Message
                     if let errorMessage = errorMessage {
                         Text(errorMessage)
-                            .font(.caption)
+                            .font(.custom("Overused Grotesk", size: 12))
                             .foregroundColor(.red)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 16)
@@ -108,14 +109,14 @@ struct PaywallView: View {
                         restorePurchases()
                     }) {
                         Text("Restore Purchases")
-                            .font(.footnote)
+                            .font(.custom("Overused Grotesk", size: 13))
                             .foregroundColor(.blue)
                     }
                     .padding(.bottom, 20)
                     
                     // MARK: - Terms
                     Text("Auto-renewable. Cancel anytime.")
-                        .font(.caption)
+                        .font(.custom("Overused Grotesk", size: 12))
                         .foregroundColor(.secondary)
                         .padding(.bottom, 10)
                 }
@@ -279,12 +280,13 @@ struct PlanCard: View {
                 VStack(alignment: .leading, spacing: 5) {
                     HStack {
                         Text(plan.title)
-                            .font(.headline)
+                            .font(.custom("Overused Grotesk", size: 17))
+                            .fontWeight(.semibold)
                         
                         // Tag "CURRENT PLAN" nếu đang dùng gói này
                         if plan.isCurrentPlan {
                             Text("CURRENT PLAN")
-                                .font(.caption2)
+                                .font(.custom("Overused Grotesk", size: 11))
                                 .fontWeight(.bold)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
@@ -296,7 +298,7 @@ struct PlanCard: View {
                         // Tag "BEST VALUE" cho Monthly
                         if plan.type == .monthly && !plan.isCurrentPlan {
                             Text("BEST VALUE")
-                                .font(.caption2)
+                                .font(.custom("Overused Grotesk", size: 11))
                                 .fontWeight(.bold)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
@@ -307,7 +309,7 @@ struct PlanCard: View {
                     }
                     
                     Text(plan.description)
-                        .font(.caption)
+                        .font(.custom("Overused Grotesk", size: 12))
                         .foregroundColor(.secondary)
                 }
                 
@@ -315,11 +317,12 @@ struct PlanCard: View {
                 
                 VStack(alignment: .trailing) {
                     Text(plan.price)
-                        .font(.title2)
+                        .font(.custom("Overused Grotesk", size: 22))
+                        .fontWeight(.bold)
                         .fontWeight(.bold)
                     
                     Text(plan.duration)
-                        .font(.caption)
+                        .font(.custom("Overused Grotesk", size: 12))
                         .foregroundColor(.secondary)
                 }
             }
@@ -351,7 +354,7 @@ struct FeatureRow: View {
                 .frame(width: 20)
             
             Text(text)
-                .font(.subheadline)
+                .font(.custom("Overused Grotesk", size: 15))
             
             Spacer()
         }

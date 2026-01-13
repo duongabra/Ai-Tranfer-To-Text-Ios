@@ -8,6 +8,8 @@
 import SwiftUI
 
 struct HomeView: View {
+    @EnvironmentObject var authViewModel: AuthViewModel
+    
     @State private var hasActiveSubscription = false
     @State private var isLoadingSubscription = true
     @State private var showingPaywall = false
@@ -19,8 +21,15 @@ struct HomeView: View {
     @State private var selectedFile: FileAttachment?
     @State private var selectedFileData: Data?
     
+    // Navigation state
+    @State private var navigationPath = NavigationPath()
+    
+    // Conversation list drawer state
+    @State private var showingConversationListDrawer = false
+    
     var body: some View {
-        ZStack(alignment: .bottom) {
+        NavigationStack(path: $navigationPath) {
+            ZStack(alignment: .bottom) {
             // Background - màu trắng #FFF
             Color.white
                 .ignoresSafeArea()
@@ -57,38 +66,55 @@ struct HomeView: View {
                     .frame(maxWidth: .infinity)
             }
             .ignoresSafeArea(edges: .bottom)
-        }
-        .task {
-            await checkSubscriptionStatus()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-            // Refresh subscription status khi app quay lại foreground
-            Task {
+            }
+            .task {
                 await checkSubscriptionStatus()
             }
-        }
-        .sheet(isPresented: $showingPaywall) {
-            PaywallView()
-                .onDisappear {
-                    // Refresh subscription status sau khi đóng PaywallView
-                    // Thêm delay nhỏ để RevenueCat sync lại customer info
-                    Task {
-                        // Đợi 500ms để RevenueCat sync lại data
-                        try? await Task.sleep(nanoseconds: 500_000_000)
-                        await checkSubscriptionStatus()
-                    }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                // Refresh subscription status khi app quay lại foreground
+                Task {
+                    await checkSubscriptionStatus()
                 }
-        }
-        .overlay(alignment: .bottom) {
-            // Upload File Modal
-            if showingUploadModal {
-                UploadFileModal(
-                    isPresented: $showingUploadModal,
-                    selectedFile: $selectedFile,
-                    selectedFileData: $selectedFileData
+            }
+            .sheet(isPresented: $showingPaywall) {
+                PaywallView()
+                    .onDisappear {
+                        // Refresh subscription status sau khi đóng PaywallView
+                        // Thêm delay nhỏ để RevenueCat sync lại customer info
+                        Task {
+                            // Đợi 500ms để RevenueCat sync lại data
+                            try? await Task.sleep(nanoseconds: 500_000_000)
+                            await checkSubscriptionStatus()
+                        }
+                    }
+            }
+            .overlay(alignment: .bottom) {
+                // Upload File Modal
+                if showingUploadModal {
+                    UploadFileModal(
+                        isPresented: $showingUploadModal,
+                        selectedFile: $selectedFile,
+                        selectedFileData: $selectedFileData,
+                        onTranscribeSuccess: { conversation in
+                            // Navigate đến ChatView với conversation mới
+                            navigationPath.append(conversation)
+                        }
+                    )
+                    .transition(.move(edge: .bottom))
+                    .zIndex(1000)
+                }
+            }
+            .navigationDestination(for: Conversation.self) { conversation in
+                ChatView(conversation: conversation)
+            }
+            .overlay(alignment: .leading) {
+                // Conversation List Drawer
+                ConversationListDrawer(
+                    isPresented: $showingConversationListDrawer,
+                    onConversationSelected: { conversation in
+                        navigationPath.append(conversation)
+                    }
                 )
-                .transition(.move(edge: .bottom))
-                .zIndex(1000)
             }
         }
         .sheet(isPresented: $showingImageVideoPicker) {
@@ -124,7 +150,9 @@ struct HomeView: View {
         HStack {
             // Menu icon (3 gạch ngang)
             Button(action: {
-                // TODO: Open menu drawer
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    showingConversationListDrawer = true
+                }
             }) {
                 MenuIcon()
                     .frame(width: 40, height: 40)
@@ -264,7 +292,7 @@ struct SubscriptionBadge: View {
                     .foregroundColor(.white)
                 
                 Image(systemName: "crown.fill")
-                    .font(.system(size: 14))
+                    .font(.custom("Overused Grotesk", size: 14))
                     .foregroundColor(.white)
             }
             .padding(.horizontal, 16)
@@ -279,7 +307,7 @@ struct SubscriptionBadge: View {
                     .foregroundColor(.primaryOrange)
                 
                 Image(systemName: "crown.fill")
-                    .font(.system(size: 14))
+                    .font(.custom("Overused Grotesk", size: 14))
                     .foregroundColor(.primaryOrange)
             }
             .padding(.horizontal, 16)
@@ -320,7 +348,7 @@ struct ActionCard: View {
                         .frame(width: 48, height: 48)
                 } else {
                     Image(systemName: "doc")
-                        .font(.system(size: 24))
+                        .font(.custom("Overused Grotesk", size: 24))
                         .foregroundColor(iconColor)
                         .frame(width: 48, height: 48)
                         .background(iconColor.opacity(0.1))

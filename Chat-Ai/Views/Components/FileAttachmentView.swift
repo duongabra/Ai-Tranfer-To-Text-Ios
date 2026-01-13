@@ -23,16 +23,16 @@ struct FileAttachmentView: View {
             // File info
             HStack(spacing: 4) {
                 Image(systemName: attachment.type.icon)
-                    .font(.caption2)
+                    .font(.custom("Overused Grotesk", size: 11))
                 
                 Text(attachment.name)
-                    .font(.caption2)
+                    .font(.custom("Overused Grotesk", size: 11))
                     .lineLimit(1)
                 
                 Spacer()
                 
                 Text(attachment.formattedSize)
-                    .font(.caption2)
+                    .font(.custom("Overused Grotesk", size: 11))
                     .foregroundColor(.secondary)
             }
             .padding(.horizontal, 8)
@@ -84,7 +84,7 @@ struct FileAttachmentView: View {
                     .cornerRadius(12)
             case .failure:
                 Image(systemName: "photo")
-                    .font(.largeTitle)
+                    .font(.custom("Overused Grotesk", size: 34))
                     .foregroundColor(.gray)
                     .frame(height: 200)
             @unknown default:
@@ -110,16 +110,16 @@ struct FileAttachmentView: View {
     private var genericFileView: some View {
         HStack(spacing: 12) {
             Image(systemName: "doc.fill")
-                .font(.system(size: 40))
+                .font(.custom("Overused Grotesk", size: 40))
                 .foregroundColor(.gray)
             
             VStack(alignment: .leading, spacing: 4) {
                 Text("File")
-                    .font(.subheadline)
+                    .font(.custom("Overused Grotesk", size: 15))
                     .fontWeight(.medium)
                 
                 Text("Tap to open")
-                    .font(.caption)
+                    .font(.custom("Overused Grotesk", size: 12))
                     .foregroundColor(.secondary)
             }
             
@@ -156,7 +156,7 @@ struct FullScreenMediaView: View {
                         case .failure:
                             VStack(spacing: 12) {
                                 Image(systemName: "exclamationmark.triangle")
-                                    .font(.largeTitle)
+                                    .font(.custom("Overused Grotesk", size: 34))
                                 Text("Failed to load image")
                             }
                             .foregroundColor(.white)
@@ -187,12 +187,13 @@ struct FullScreenMediaView: View {
                     VStack(spacing: 24) {
                         // Audio icon
                         Image(systemName: "music.note.list")
-                            .font(.system(size: 80))
+                            .font(.custom("Overused Grotesk", size: 80))
                             .foregroundColor(.white)
                         
                         // File name
                         Text(attachment.name)
-                            .font(.headline)
+                            .font(.custom("Overused Grotesk", size: 17))
+                            .fontWeight(.semibold)
                             .foregroundColor(.white)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
@@ -280,7 +281,7 @@ struct InlineVideoPlayer: View {
                         isPlaying = true
                     } label: {
                         Image(systemName: "play.circle.fill")
-                            .font(.system(size: 60))
+                            .font(.custom("Overused Grotesk", size: 60))
                             .foregroundColor(.white)
                             .shadow(radius: 8)
                     }
@@ -295,11 +296,11 @@ struct InlineVideoPlayer: View {
                     
                     VStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle")
-                            .font(.largeTitle)
+                            .font(.custom("Overused Grotesk", size: 34))
                             .foregroundColor(.gray)
                         
                         Text("Invalid video URL")
-                            .font(.caption)
+                            .font(.custom("Overused Grotesk", size: 12))
                             .foregroundColor(.secondary)
                     }
                 }
@@ -334,18 +335,18 @@ struct InlineAudioPlayer: View {
                     }
                 } label: {
                     Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 40))
+                        .font(.custom("Overused Grotesk", size: 40))
                         .foregroundColor(.blue)
                 }
                 .disabled(url == nil)
                 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Audio File")
-                        .font(.subheadline)
+                        .font(.custom("Overused Grotesk", size: 15))
                         .fontWeight(.medium)
                     
                     Text(fileName)
-                        .font(.caption)
+                        .font(.custom("Overused Grotesk", size: 12))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                 }

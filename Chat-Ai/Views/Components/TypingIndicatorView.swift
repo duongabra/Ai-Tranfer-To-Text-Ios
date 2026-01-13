@@ -17,7 +17,7 @@ struct TypingIndicatorView: View {
         HStack(alignment: .bottom, spacing: 16) {
             // Avatar AI (icon)
             Image(systemName: "cpu")
-                .font(.title2)
+                .font(.custom("Overused Grotesk", size: 22))
                 .foregroundColor(.blue)
                 .frame(width: 32, height: 32)
                 .background(Color.blue.opacity(0.1))

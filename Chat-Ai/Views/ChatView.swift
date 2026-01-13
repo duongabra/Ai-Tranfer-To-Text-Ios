@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AVFoundation
 
 struct ChatView: View {
     
@@ -31,8 +32,20 @@ struct ChatView: View {
     // State để hiển thị rename sheet
     @State private var showingRenameSheet = false
     
+    // Conversation list drawer state
+    @State private var showingConversationListDrawer = false
+    
+    // State để lưu ScrollViewReader proxy
+    @State private var scrollProxy: ScrollViewProxy?
+    
+    // State để track xem có đang ở bottom không
+    @State private var isAtBottom = true
+    
     // Environment để dismiss view
     @Environment(\.dismiss) private var dismiss
+    
+    // Environment object cho auth
+    @EnvironmentObject var authViewModel: AuthViewModel
     
     /// Initializer
     init(conversation: Conversation) {
@@ -90,6 +103,39 @@ struct ChatView: View {
         .sheet(isPresented: $showingRenameSheet) {
             RenameConversationSheet(viewModel: viewModel)
         }
+        // Conversation List Drawer overlay
+        .overlay(alignment: .leading) {
+            ConversationListDrawer(
+                isPresented: $showingConversationListDrawer,
+                onConversationSelected: { selectedConversation in
+                    // Nếu chọn conversation khác, gửi notification để HomeView replace conversation trong navigation stack
+                    if selectedConversation.id != conversation.id {
+                        print("🔄 ChatView: Selected conversation \(selectedConversation.title), current: \(conversation.title)")
+                        // Đóng drawer trước
+                        showingConversationListDrawer = false
+                        // Đợi một chút để drawer đóng xong, sau đó gửi notification
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            print("🔄 ChatView: Posting ReplaceConversation notification")
+                            NotificationCenter.default.post(
+                                name: NSNotification.Name("ReplaceConversation"),
+                                object: nil,
+                                userInfo: ["conversation": selectedConversation]
+                            )
+                        }
+                    }
+                },
+                onHomeSelected: {
+                    // Gửi notification để HomeView clear navigation path và về home
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("NavigateToHome"),
+                        object: nil
+                    )
+                    // Dismiss ChatView
+                    dismiss()
+                }
+            )
+            .environmentObject(authViewModel)
+        }
     }
     
     // MARK: - Header
@@ -97,23 +143,23 @@ struct ChatView: View {
     /// Header theo design Figma
     private var chatHeader: some View {
         HStack(alignment: .center, spacing: 12) {
-            // Back button
+            // Menu icon (3 gạch ngang) để mở drawer
             Button(action: {
-                dismiss()
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    showingConversationListDrawer = true
+                }
             }) {
-                Image(systemName: "chevron.left")
-                    .font(.custom("Overused Grotesk", size: 20))
-                    .fontWeight(.semibold)
-                    .foregroundColor(.textPrimary)
+                MenuIcon()
                     .frame(width: 40, height: 40)
             }
             
             // Title ở giữa
-            Text(viewModel.conversationTitle)
+            Text("Summary Video")
                 .font(.custom("Overused Grotesk", size: 16))
                 .fontWeight(.semibold)
                 .foregroundColor(.textPrimary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity)
+                .multilineTextAlignment(.center)
             
             // Pro button với menu
             Menu {
@@ -163,7 +209,7 @@ struct ChatView: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.top, 179) // Theo design Figma
+        .padding(.top, 0) // Giảm padding top để giảm khoảng trống
         .padding(.bottom, 12)
     }
     
@@ -174,12 +220,14 @@ struct ChatView: View {
         ZStack(alignment: .bottom) {
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(spacing: 12) {
                         // Video uploaded card (nếu có video trong message đầu tiên của user)
                         if let firstUserMessage = viewModel.messages.first(where: { $0.role == .user }),
                            let attachment = firstUserMessage.attachment,
                            attachment.type == .video {
                             VideoUploadedCard(attachment: attachment)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 0) // Padding đã được xử lý trong GeometryReader
                         }
                         
                         // Loading indicator
@@ -204,19 +252,48 @@ struct ChatView: View {
                                 TypingIndicatorView()
                                     .id("typing")
                             }
+                            
+                            // Bottom marker để detect khi scroll đến bottom
+                            Color.clear
+                                .frame(height: 1)
+                                .id("bottom-marker")
+                                .background(
+                                    GeometryReader { geometry in
+                                        Color.clear
+                                            .preference(key: BottomMarkerPreferenceKey.self, value: geometry.frame(in: .named("scrollView")).minY)
+                                    }
+                                )
+                                .onAppear {
+                                    // Khi marker xuất hiện, nghĩa là đã ở bottom
+                                    isAtBottom = true
+                                }
+                                .onDisappear {
+                                    // Khi marker biến mất, nghĩa là đã scroll lên
+                                    isAtBottom = false
+                                }
                         } else if !viewModel.isLoading {
                             // Empty state
                             emptyStateView
                         }
                     }
+                    .frame(maxWidth: .infinity)
                     .padding(.horizontal, 16)
-                    .padding(.top, 16)
-                    .padding(.bottom, 100) // Space cho input area
+                    .padding(.top, 12) // Padding top hợp lý
+                    .padding(.bottom, 12) // Padding bottom hợp lý
+                }
+                .coordinateSpace(name: "scrollView")
+                .onPreferenceChange(BottomMarkerPreferenceKey.self) { value in
+                    // Update liên tục khi scroll để detect chính xác hơn
+                    handleScrollPositionChange(value)
                 }
                 .onChange(of: viewModel.messages.count) { _, _ in
                     if let lastMessage = viewModel.messages.last {
                         withAnimation {
                             proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                        }
+                        // Reset isAtBottom khi có message mới
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            isAtBottom = true
                         }
                     }
                 }
@@ -225,8 +302,18 @@ struct ChatView: View {
                         withAnimation {
                             proxy.scrollTo("typing", anchor: .bottom)
                         }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            isAtBottom = true
+                        }
                     }
                 }
+                .background(
+                    // Store proxy để dùng trong button
+                    Color.clear
+                        .onAppear {
+                            scrollProxy = proxy
+                        }
+                )
             }
             
             // Gradient mask ở cuối
@@ -240,11 +327,65 @@ struct ChatView: View {
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: 64)
+                .frame(height: 32)
                 .allowsHitTesting(false)
+            }
+            
+            // Down arrow button để scroll xuống message cuối cùng - chỉ hiển thị khi không ở bottom
+            if !viewModel.messages.isEmpty && !isAtBottom {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            scrollToBottom()
+                        }) {
+                            Image("down_arrow_icon")
+                                .resizable()
+                                .renderingMode(.original)
+                                .frame(width: 32, height: 32)
+                                .background(
+                                    Circle()
+                                        .fill(Color.white)
+                                        .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+                                )
+                        }
+                        Spacer()
+                    }
+                    .padding(.bottom, 8) // Padding để không che input area
+                    .transition(.opacity.combined(with: .scale))
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    
+    // Function để scroll xuống message cuối cùng
+    private func scrollToBottom() {
+        if let lastMessage = viewModel.messages.last {
+            withAnimation {
+                scrollProxy?.scrollTo(lastMessage.id, anchor: .bottom)
+            }
+        } else if viewModel.isSending {
+            withAnimation {
+                scrollProxy?.scrollTo("typing", anchor: .bottom)
+            }
+        }
+        // Set isAtBottom sau khi scroll
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            isAtBottom = true
+        }
+    }
+    
+    // Function để handle scroll position change
+    private func handleScrollPositionChange(_ value: CGFloat) {
+        // Khi marker ở trong viewport (value nhỏ và dương), nghĩa là đã ở bottom
+        // value sẽ là khoảng cách từ top của scroll view đến marker
+        // Nếu value < một threshold, nghĩa là marker đã visible (ở bottom)
+        let screenHeight = UIScreen.main.bounds.height
+        let threshold: CGFloat = screenHeight * 0.8 // Threshold để xác định "ở bottom" (80% screen height)
+        // Nếu marker ở gần bottom của screen (value nhỏ hơn threshold), nghĩa là đã ở bottom
+        isAtBottom = value < threshold && value > -screenHeight
     }
     
     /// Kiểm tra xem message có phải là video đầu tiên của user không
@@ -349,63 +490,61 @@ struct ChatView: View {
             // Input container với background màu cam
             HStack(alignment: .bottom, spacing: 8) {
                 // Input field
-                HStack(spacing: 8) {
-                    TextField("Ask anything about video ...", text: $viewModel.inputText, axis: .vertical)
-                        .textFieldStyle(.plain)
-                        .font(.custom("Overused Grotesk", size: 14))
-                        .foregroundColor(.textPrimary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Color.white)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 24)
-                                .stroke(Color(hex: "F4F4F4"), lineWidth: 1)
-                        )
-                        .cornerRadius(24)
-                        .focused($isInputFocused)
-                        .lineLimit(1...5)
-                        .disabled(viewModel.isSending)
-                    
-                    // Send button
-                    Button(action: {
-                        Task {
-                            if let selectedFile = viewModel.selectedFile,
-                               let fileData = selectedFileData {
-                                await viewModel.sendMessageWithFile(
-                                    data: fileData,
-                                    fileName: selectedFile.name,
-                                    fileType: selectedFile.type
-                                )
-                                selectedFileData = nil
-                            } else {
-                                await viewModel.sendMessage()
-                            }
-                        }
-                    }) {
-                        ZStack {
-                            Circle()
-                                .fill(canSendMessage ? Color.primaryOrange : Color.primaryOrange.opacity(0.4))
-                                .frame(width: 32, height: 32)
-                            
-                            if viewModel.isSending {
-                                ProgressView()
-                                    .tint(.white)
-                                    .scaleEffect(0.8)
-                            } else {
-                                Image(systemName: "arrow.up")
-                                    .font(.custom("Overused Grotesk", size: 14))
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.white)
-                            }
+                TextField("Ask anything about video ...", text: $viewModel.inputText, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.custom("Overused Grotesk", size: 14))
+                    .foregroundColor(.textPrimary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.white)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24)
+                            .stroke(Color(hex: "F4F4F4"), lineWidth: 1)
+                    )
+                    .cornerRadius(24)
+                    .focused($isInputFocused)
+                    .lineLimit(1...5)
+                    .disabled(viewModel.isSending)
+                
+                // Send button
+                Button(action: {
+                    Task {
+                        if let selectedFile = viewModel.selectedFile,
+                           let fileData = selectedFileData {
+                            await viewModel.sendMessageWithFile(
+                                data: fileData,
+                                fileName: selectedFile.name,
+                                fileType: selectedFile.type
+                            )
+                            selectedFileData = nil
+                        } else {
+                            await viewModel.sendMessage()
                         }
                     }
-                    .disabled(!canSendMessage || viewModel.isSending)
+                }) {
+                    ZStack {
+                        Circle()
+                            .fill(canSendMessage ? Color.primaryOrange : Color.primaryOrange.opacity(0.4))
+                            .frame(width: 32, height: 32)
+                        
+                        if viewModel.isSending {
+                            ProgressView()
+                                .tint(.white)
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "arrow.up")
+                                .font(.custom("Overused Grotesk", size: 14))
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                        }
+                    }
                 }
+                .disabled(!canSendMessage || viewModel.isSending)
             }
             .padding(.horizontal, 16)
-            .padding(.top, 0)
-            .padding(.bottom, 32)
-            .background(Color.primaryOrange)
+            .padding(.top, 16)
+            .padding(.bottom, 0)
+            .background(Color.backgroundCream) // Đổi từ cam sang cream
         }
         .sheet(isPresented: $showingImagePicker) {
             FilePicker(
@@ -466,54 +605,46 @@ struct ChatView: View {
 struct VideoUploadedCard: View {
     let attachment: FileAttachment
     
+    @State private var videoThumbnail: UIImage?
+    
     var body: some View {
+        let screenWidth = UIScreen.main.bounds.width
+        let horizontalPadding: CGFloat = 16
+        let cardMaxWidth = screenWidth - (horizontalPadding * 2)
+        let thumbnailWidth = min(113, cardMaxWidth * 0.3) // 30% của card width, max 113
+        let thumbnailHeight = thumbnailWidth * (64.0 / 113.0) // Giữ tỷ lệ 113:64
+        
         HStack(alignment: .center, spacing: 8) {
             // Thumbnail
-            AsyncImage(url: URL(string: attachment.url)) { phase in
-                switch phase {
-                case .empty:
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(width: 113, height: 64)
-                case .success(let image):
-                    image
+            Group {
+                if let thumbnail = videoThumbnail {
+                    Image(uiImage: thumbnail)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(width: 113, height: 64)
+                        .frame(width: thumbnailWidth, height: thumbnailHeight)
                         .clipped()
                         .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.black.opacity(0.4))
-                        )
-                case .failure:
+                } else {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color.gray.opacity(0.3))
-                        .frame(width: 113, height: 64)
-                @unknown default:
-                    EmptyView()
+                        .frame(width: thumbnailWidth, height: thumbnailHeight)
                 }
+            }
+            .onAppear {
+                extractVideoThumbnail(from: attachment.url)
             }
             
             // Content
-            VStack(alignment: .leading, spacing: 6) {
-                // YouTube icon
-                Image(systemName: "play.circle.fill")
-                    .font(.custom("Overused Grotesk", size: 20))
-                    .foregroundColor(.red)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(attachment.name)
+                    .font(.custom("Overused Grotesk", size: 13))
+                    .fontWeight(.semibold)
+                    .foregroundColor(.textPrimary)
+                    .lineLimit(1)
                 
-                // Title và channel
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(attachment.name)
-                        .font(.custom("Overused Grotesk", size: 13))
-                        .fontWeight(.semibold)
-                        .foregroundColor(.textPrimary)
-                        .lineLimit(2)
-                    
-                    Text("Video")
-                        .font(.custom("Overused Grotesk", size: 12))
-                        .foregroundColor(.textTertiary)
-                }
+                Text("Video")
+                    .font(.custom("Overused Grotesk", size: 12))
+                    .foregroundColor(.textTertiary)
             }
             
             Spacer()
@@ -525,7 +656,40 @@ struct VideoUploadedCard: View {
                 .stroke(Color(hex: "F4F4F4"), lineWidth: 1)
         )
         .cornerRadius(16)
-        .frame(width: 358)
+        .frame(maxWidth: cardMaxWidth)
+    }
+    
+    // MARK: - Extract Video Thumbnail
+    
+    private func extractVideoThumbnail(from urlString: String) {
+        guard let url = URL(string: urlString) else {
+            print("❌ Invalid video URL: \(urlString)")
+            return
+        }
+        
+        let asset = AVAsset(url: url)
+        let imageGenerator = AVAssetImageGenerator(asset: asset)
+        imageGenerator.appliesPreferredTrackTransform = true
+        imageGenerator.requestedTimeToleranceAfter = .zero
+        imageGenerator.requestedTimeToleranceBefore = .zero
+        
+        let time = CMTime(seconds: 0, preferredTimescale: 600)
+        
+        Task {
+            do {
+                let cgImage = try await imageGenerator.image(at: time).image
+                let uiImage = UIImage(cgImage: cgImage)
+                
+                await MainActor.run {
+                    videoThumbnail = uiImage
+                }
+            } catch {
+                print("❌ Failed to extract video thumbnail: \(error)")
+                await MainActor.run {
+                    videoThumbnail = nil
+                }
+            }
+        }
     }
 }
 
@@ -538,30 +702,96 @@ struct MessageBubble: View {
     @State private var showCopiedFeedback = false
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Message content container
-            VStack(alignment: .leading, spacing: 8) {
-                // File attachment (nếu có)
-                if let attachment = message.attachment {
-                    // Chỉ hiển thị file attachment nếu không phải video đầu tiên của user (đã hiển thị ở card riêng)
-                    if !isFirstUserVideo {
-                        FileAttachmentView(attachment: attachment)
+        let screenWidth = UIScreen.main.bounds.width
+        let horizontalPadding: CGFloat = 16
+        let contentMaxWidth = screenWidth - (horizontalPadding * 2)
+        let botMessageMaxWidth = min(304, contentMaxWidth * 0.85) // 85% của content width, max 304
+        let userMessageMaxWidth = min(320, contentMaxWidth * 0.9) // 90% của content width, max 320
+        
+        if message.role == .assistant {
+            // Assistant message: align về trái, không có background
+            HStack {
+                VStack(alignment: .leading, spacing: 16) {
+                    // Message content container
+                    VStack(alignment: .leading, spacing: 8) {
+                        // File attachment (nếu có)
+                        if let attachment = message.attachment {
+                            // Chỉ hiển thị file attachment nếu không phải video đầu tiên của user (đã hiển thị ở card riêng)
+                            if !isFirstUserVideo {
+                                FileAttachmentView(attachment: attachment)
+                            }
+                        }
+                        
+                        // Nội dung message
+                        if !message.content.isEmpty && message.content != "📎 Sent a file" {
+                            Text(message.content)
+                                .font(.custom("Overused Grotesk", size: 14).weight(.regular))
+                                .monospacedDigit() // font-variant-numeric: lining-nums tabular-nums
+                                .foregroundColor(Color(hex: "020202")) // color: #020202
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .lineSpacing(6) // Line height 20px = 14px font + 6px spacing
+                        }
+                    }
+                    .frame(maxWidth: botMessageMaxWidth, alignment: .leading)
+                    
+                    // Actions icon (copy) - chỉ hiển thị cho assistant messages
+                    HStack(spacing: 8) {
+                        Button(action: {
+                            copyToClipboard(message.content)
+                        }) {
+                            Image("copy_icon")
+                                .resizable()
+                                .renderingMode(.template)
+                                .foregroundColor(.textTertiary)
+                                .frame(width: 16, height: 16)
+                        }
                     }
                 }
+                .frame(maxWidth: contentMaxWidth, alignment: .leading)
                 
-                // Nội dung message
-                if !message.content.isEmpty && message.content != "📎 Sent a file" {
-                    Text(message.content)
-                        .font(.custom("Overused Grotesk", size: 14))
-                        .foregroundColor(.textPrimary)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                Spacer()
             }
-            .frame(maxWidth: 304, alignment: .leading)
-            .padding(0)
+        } else {
+            // User message: align về phải, có background white + border
+            // Fit content khi ngắn, max width khi dài
+            HStack {
+                Spacer()
+                
+                VStack(alignment: .trailing, spacing: 2) {
+                    // Message content container
+                    VStack(alignment: .trailing, spacing: 8) {
+                        // File attachment (nếu có)
+                        if let attachment = message.attachment {
+                            // Chỉ hiển thị file attachment nếu không phải video đầu tiên của user (đã hiển thị ở card riêng)
+                            if !isFirstUserVideo {
+                                FileAttachmentView(attachment: attachment)
+                            }
+                        }
+                        
+                        // Nội dung message
+                        if !message.content.isEmpty && message.content != "📎 Sent a file" {
+                            Text(message.content)
+                                .font(.custom("Overused Grotesk", size: 14).weight(.regular))
+                                .monospacedDigit() // font-variant-numeric: lining-nums tabular-nums
+                                .foregroundColor(Color(hex: "020202")) // color: #020202
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .lineSpacing(6) // Line height 20px = 14px font + 6px spacing
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Color.white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color(hex: "F4F4F4"), lineWidth: 1)
+                )
+                .cornerRadius(16)
+                .frame(maxWidth: userMessageMaxWidth, alignment: .trailing) // Max width khi dài, fit content khi ngắn
         }
-        .frame(maxWidth: 358, alignment: .leading)
+        }
     }
     
     /// Copy text to clipboard
@@ -629,6 +859,15 @@ struct RenameConversationSheet: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Preference Keys for Scroll Detection
+
+struct BottomMarkerPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 

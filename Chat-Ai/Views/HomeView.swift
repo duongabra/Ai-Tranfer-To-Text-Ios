@@ -76,6 +76,32 @@ struct HomeView: View {
                     await checkSubscriptionStatus()
                 }
             }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ReplaceConversation"))) { notification in
+                // Nhận notification từ ChatView khi chọn conversation khác từ drawer
+                // Replace conversation trong navigation stack để nhảy thẳng đến ChatView mới
+                if let conversation = notification.userInfo?["conversation"] as? Conversation {
+                    print("🔄 Received ReplaceConversation notification for: \(conversation.title)")
+                    // Đảm bảo update trên main thread
+                    Task { @MainActor in
+                        // Clear navigation path trước
+                        let currentCount = navigationPath.count
+                        if currentCount > 0 {
+                            navigationPath.removeLast(currentCount)
+                        }
+                        print("🔄 Cleared navigation path, count: \(navigationPath.count)")
+                        // Đợi một chút để đảm bảo clear hoàn tất
+                        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 giây
+                        // Append conversation mới
+                        navigationPath.append(conversation)
+                        print("🔄 Appended conversation, new count: \(navigationPath.count)")
+                    }
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("NavigateToHome"))) { _ in
+                // Nhận notification từ ChatView khi bấm home button
+                // Clear navigation path để về home
+                navigationPath.removeLast(navigationPath.count)
+            }
             .sheet(isPresented: $showingPaywall) {
                 PaywallView()
                     .onDisappear {
@@ -113,6 +139,10 @@ struct HomeView: View {
                     isPresented: $showingConversationListDrawer,
                     onConversationSelected: { conversation in
                         navigationPath.append(conversation)
+                    },
+                    onHomeSelected: {
+                        // Clear navigation path để về home
+                        navigationPath.removeLast(navigationPath.count)
                     }
                 )
             }

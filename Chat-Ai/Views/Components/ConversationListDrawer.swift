@@ -15,14 +15,16 @@ struct ConversationListDrawer: View {
     
     @State private var searchText = ""
     @State private var showingSettings = false
+    @FocusState private var isSearchFocused: Bool
     
     var onConversationSelected: ((Conversation) -> Void)?
+    var onHomeSelected: (() -> Void)?
     
     var body: some View {
         ZStack(alignment: .leading) {
-            // Background overlay với blur
+            // Background overlay với opacity thấp để hiển thị ChatView phía sau
             if isPresented {
-                Color.white
+                Color.black.opacity(0.3)
                     .ignoresSafeArea()
                     .onTapGesture {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -72,7 +74,22 @@ struct ConversationListDrawer: View {
     private var drawerHeader: some View {
         VStack(spacing: 12) {
             HStack(spacing: 12) {
-                // Search input
+                // Home button - bên trái
+                Button(action: {
+                    // Đóng drawer
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        isPresented = false
+                    }
+                    // Navigate về home
+                    onHomeSelected?()
+                }) {
+                    Image("home_button_drawer")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 44, height: 44)
+                }
+                
+                // Search input - bên phải
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .font(.custom("Overused Grotesk", size: 16))
@@ -92,31 +109,33 @@ struct ConversationListDrawer: View {
                             .foregroundColor(.textPrimary)
                             .fontWeight(.regular)
                             .lineSpacing(6) // (20-14)
-                }
+                            .focused($isSearchFocused)
+                    }
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity)
                 .background(Color.white)
                 .overlay(
                     RoundedRectangle(cornerRadius: 9999)
-                        .stroke(Color(hex: "E4E4E4"), lineWidth: 1)
+                        .stroke(borderColor, lineWidth: 1)
                 )
                 .cornerRadius(9999)
-                
-                // Edit button
-                Button(action: {
-                    // TODO: Edit mode
-                }) {
-                    Image("edit_button_drawer")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 44, height: 44)
-                }
             }
         }
         .padding(.horizontal, 16)
         .padding(.top, 80)
         .padding(.bottom, 24)
+    }
+    
+    // MARK: - Border Color
+    
+    private var borderColor: Color {
+        // Border màu #D87757 khi có text hoặc đang focus
+        if !searchText.isEmpty || isSearchFocused {
+            return Color(hex: "#D87757")
+        } else {
+            return Color(hex: "E4E4E4")
+        }
     }
     
     // MARK: - History Title
@@ -148,12 +167,16 @@ struct ConversationListDrawer: View {
                 } else {
                     ForEach(filteredConversations) { conversation in
                         ConversationListItem(conversation: conversation)
+                            .contentShape(Rectangle())
                             .onTapGesture {
+                                // Đóng drawer trước
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                     isPresented = false
                                 }
-                                // Navigate to ChatView
-                                onConversationSelected?(conversation)
+                                // Navigate to ChatView sau một chút để drawer đóng xong
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    onConversationSelected?(conversation)
+                                }
                             }
                     }
                 }

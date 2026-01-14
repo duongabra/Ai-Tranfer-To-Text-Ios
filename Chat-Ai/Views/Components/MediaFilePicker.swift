@@ -59,7 +59,6 @@ struct MediaFilePicker: UIViewControllerRepresentable {
             
             // Đọc file data trước (để validation có thể làm ở modal level)
                 guard let data = try? Data(contentsOf: url) else {
-                    print("❌ Failed to read file data")
                     return
                 }
                 
@@ -71,7 +70,6 @@ struct MediaFilePicker: UIViewControllerRepresentable {
             do {
                 // Vẫn log warning nhưng không block, để modal xử lý validation và hiển thị toast
                 if fileSize > maxSize {
-                    print("⚠️ File size (\(fileSize) bytes) exceeds 300MB limit - will show toast in modal")
                 }
                 
                 // Xác định loại file
@@ -84,7 +82,6 @@ struct MediaFilePicker: UIViewControllerRepresentable {
                 } else if ["mp4", "mov", "avi", "mkv", "m4v"].contains(fileExtension) {
                     fileType = .video
                 } else {
-                    print("⚠️ Unsupported file type: \(fileExtension)")
                     return
                 }
                 
@@ -99,7 +96,6 @@ struct MediaFilePicker: UIViewControllerRepresentable {
                     self.parent.dismiss()
                 }
             } catch {
-                print("❌ Error checking file: \(error)")
             }
         }
         

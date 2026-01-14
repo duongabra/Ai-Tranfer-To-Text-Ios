@@ -10,7 +10,7 @@ import AVFoundation
 
 struct ConversationListDrawer: View {
     @Binding var isPresented: Bool
-    @StateObject private var viewModel = ConversationListViewModel()
+    @ObservedObject private var viewModel = ConversationListViewModel.shared
     @EnvironmentObject var authViewModel: AuthViewModel
     @ObservedObject var navigationCoordinator: NavigationCoordinator
     
@@ -41,9 +41,14 @@ struct ConversationListDrawer: View {
             }
         }
         .task(id: isPresented) {
-            // Chỉ load conversations khi drawer được mở (isPresented = true)
-            if isPresented {
+            // Refresh conversations khi drawer được mở (nếu cần)
+            if isPresented && viewModel.conversations.isEmpty {
                 await viewModel.loadConversations()
+            }
+            
+            // Đảm bảo load user info từ DB khi drawer mở
+            if isPresented, let userId = authViewModel.currentUser?.id {
+                await authViewModel.loadUserInfoFromDB(userId: userId)
             }
         }
     }
@@ -206,19 +211,16 @@ struct ConversationListDrawer: View {
     
     private var emptyStateView: some View {
         VStack(spacing: 20) {
-            Image(systemName: "bubble.left.and.bubble.right")
-                .font(.custom("Overused Grotesk", size: 60))
+            Image("EmptyConversationIcon")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 56, height: 56)
                 .foregroundColor(.textTertiary)
             
-            Text("No conversations yet")
-                .font(.custom("Overused Grotesk", size: 18))
-                .fontWeight(.semibold)
-                .foregroundColor(.textPrimary)
-            
-            Text("Start a new conversation to see it here")
+            Text("No results found")
                 .font(.custom("Overused Grotesk", size: 14))
-                .foregroundColor(.textTertiary)
-                .multilineTextAlignment(.center)
+                .foregroundColor(.textPrimary)
+
         }
         .padding(.top, 100)
         .frame(maxWidth: .infinity)
@@ -236,31 +238,11 @@ struct ConversationListDrawer: View {
             // Content
             HStack(alignment: .center, spacing: 8) {
                 // User avatar
-                AsyncImage(url: URL(string: authViewModel.currentUser?.avatarURL ?? "")) { phase in
-                    switch phase {
-                    case .empty, .failure:
-                        Circle()
-                            .fill(Color(hex: "D9D9D9"))
-                            .frame(width: 32, height: 32)
-                            .overlay(
-                                Text(formatUserName(authViewModel.currentUser?.displayName ?? authViewModel.currentUser?.email ?? "U").prefix(1).uppercased())
-                                    .font(.custom("Overused Grotesk", size: 14))
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.textPrimary)
-                            )
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 32, height: 32)
-                            .clipShape(Circle())
-                    @unknown default:
-                        EmptyView()
-                    }
-                }
+                AvatarView(avatarURL: authViewModel.currentUser?.avatarURL, size: 32)
                 
                 // User name - max 10 characters
-                Text(formatUserName(authViewModel.currentUser?.displayName ?? authViewModel.currentUser?.email ?? "User"))
+                UserDisplayNameText()
+                    .environmentObject(authViewModel)
                     .font(.custom("Overused Grotesk", size: 16))
                     .fontWeight(.semibold)
                     .foregroundColor(.textPrimary)
@@ -291,16 +273,6 @@ struct ConversationListDrawer: View {
         .background(Color.white)
     }
     
-    // MARK: - Format User Name
-    
-    /// Format user name: max 10 characters, add "..." if longer
-    private func formatUserName(_ name: String) -> String {
-        if name.count <= 10 {
-            return name
-        } else {
-            return String(name.prefix(10)) + "..."
-        }
-    }
 }
 
 // MARK: - Conversation List Item
@@ -468,7 +440,6 @@ struct ConversationListItem: View {
                 }
             }
         } catch {
-            print("❌ Error loading first message: \(error)")
         }
     }
     
@@ -476,7 +447,6 @@ struct ConversationListItem: View {
     
     private func extractVideoThumbnail(from urlString: String) {
         guard let url = URL(string: urlString) else {
-            print("❌ Invalid video URL: \(urlString)")
             return
         }
         
@@ -497,7 +467,6 @@ struct ConversationListItem: View {
                     videoThumbnail = uiImage
                 }
             } catch {
-                print("❌ Failed to extract video thumbnail: \(error)")
                 await MainActor.run {
                     videoThumbnail = nil
                 }

@@ -31,11 +31,127 @@ class AuthViewModel: ObservableObject {
     
     // MARK: - Check Current User
     
-    /// Kiểm tra xem user đã đăng nhập chưa
+    /// Kiểm tra xem user đã đăng nhập chưa và load đầy đủ thông tin từ DB
     func checkCurrentUser() {
         Task {
-            currentUser = await AuthService.shared.getCurrentUser()
+            // Lấy user cơ bản từ UserDefaults trước
+            guard let user = await AuthService.shared.getCurrentUser() else {
+                return
+            }
+            
+            // Load đầy đủ thông tin từ DB TRƯỚC khi set currentUser
+            // Để tránh UI hiển thị avatar mặc định (chữ A) trước khi load xong
+            var updatedUser = user
+            await loadUserInfoFromDBIntoUser(userId: user.id, user: &updatedUser)
+            
+            // Chỉ set currentUser SAU KHI đã load đầy đủ thông tin từ DB
+            currentUser = updatedUser
+            
+            // Preload avatar image ngay khi có avatarURL
+            if let avatarURL = updatedUser.avatarURL, !avatarURL.isEmpty, let url = URL(string: avatarURL) {
+                Task {
+                    await ImageCacheService.shared.preloadImage(url: url)
+                }
+            }
+            
         }
+    }
+    
+    /// Load đầy đủ thông tin user từ DB và cập nhật vào user object (không set currentUser)
+    /// Dùng khi muốn load TRƯỚC khi set currentUser để tránh UI flash
+    private func loadUserInfoFromDBIntoUser(userId: UUID, user: inout User) async {
+        do {
+            // Lấy profile từ DB
+            guard let profile = try await SupabaseService.shared.getUserProfile(userId: userId) else {
+                return
+            }
+            
+            
+            // Load avatarURL từ DB
+            let avatarURL = profile["avatar_url"] as? String
+            
+            // Cập nhật user object với avatarURL từ DB
+            let oldAvatarURL = user.avatarURL
+            user.avatarURL = avatarURL
+            
+            // Preload avatar image ngay khi có avatarURL
+            if let avatarURL = avatarURL, !avatarURL.isEmpty, let url = URL(string: avatarURL) {
+                Task {
+                    await ImageCacheService.shared.preloadImage(url: url)
+                }
+            }
+            
+        } catch {
+        }
+    }
+    
+    /// Load đầy đủ thông tin user từ DB (avatarURL, firstName, lastName)
+    /// Method chung được gọi ở nhiều nơi để đảm bảo có data mới nhất
+    /// Method này sẽ cập nhật currentUser trực tiếp
+    func loadUserInfoFromDB(userId: UUID) async {
+        do {
+            // Lấy profile từ DB
+            guard let profile = try await SupabaseService.shared.getUserProfile(userId: userId) else {
+                return
+            }
+            
+            
+            // Load avatarURL từ DB
+            let avatarURL = profile["avatar_url"] as? String
+            
+            // Cập nhật currentUser với avatarURL từ DB
+            if var user = currentUser, user.id == userId {
+                let oldAvatarURL = user.avatarURL
+                user.avatarURL = avatarURL
+                currentUser = user
+            } else {
+                // Nếu currentUser chưa có, lấy từ AuthService và set
+                if let basicUser = await AuthService.shared.getCurrentUser(), basicUser.id == userId {
+                    var updatedUser = basicUser
+                    updatedUser.avatarURL = avatarURL
+                    currentUser = updatedUser
+                } else {
+                }
+            }
+        } catch {
+        }
+    }
+    
+    /// Refresh user info từ Supabase và load từ DB
+    func refreshCurrentUser() async {
+        do {
+            let refreshedUser = try await AuthService.shared.refreshCurrentUser()
+            
+            // Set currentUser trước
+            currentUser = refreshedUser
+            
+            // Load thông tin từ DB để đảm bảo có avatarURL mới nhất
+            await loadUserInfoFromDB(userId: refreshedUser.id)
+            
+        } catch {
+            // Fallback: chỉ load từ DB nếu có currentUser
+            if let userId = currentUser?.id {
+                await loadUserInfoFromDB(userId: userId)
+            }
+        }
+    }
+    
+    /// Lấy full name từ firstName + lastName (từ database) hoặc displayName (fallback)
+    func getUserDisplayName() async -> String {
+        let nameComponents = await AuthService.shared.getUserNameComponents()
+        
+        // Nếu có firstName và lastName từ database
+        if let firstName = nameComponents.firstName, !firstName.isEmpty,
+           let lastName = nameComponents.lastName, !lastName.isEmpty {
+            return "\(firstName) \(lastName)"
+        } else if let firstName = nameComponents.firstName, !firstName.isEmpty {
+            return firstName
+        } else if let lastName = nameComponents.lastName, !lastName.isEmpty {
+            return lastName
+        }
+        
+        // Fallback: dùng displayName từ user_metadata
+        return currentUser?.displayName ?? currentUser?.email ?? "User"
     }
     
     // MARK: - Sign In with Apple
@@ -52,16 +168,16 @@ class AuthViewModel: ObservableObject {
             // Update UI
             currentUser = user
             
-            print("✅ Đăng nhập Apple thành công: \(user.email)")
+            // Load đầy đủ thông tin từ DB sau khi đăng nhập
+            await loadUserInfoFromDB(userId: user.id)
+            
             
         } catch let error as AuthError {
             // Lỗi từ AuthService
             errorMessage = error.localizedDescription
-            print("❌ Lỗi đăng nhập Apple: \(error.localizedDescription)")
         } catch {
             // Lỗi khác
             errorMessage = "Apple login failed: \(error.localizedDescription)"
-            print("❌ Lỗi đăng nhập Apple: \(error)")
         }
         
         isLoading = false
@@ -81,16 +197,16 @@ class AuthViewModel: ObservableObject {
             // Update UI
             currentUser = user
             
-            print("✅ Đăng nhập thành công: \(user.email)")
+            // Load đầy đủ thông tin từ DB sau khi đăng nhập
+            await loadUserInfoFromDB(userId: user.id)
+            
             
         } catch let error as AuthError {
             // Lỗi từ AuthService
             errorMessage = error.localizedDescription
-            print("❌ Lỗi đăng nhập: \(error.localizedDescription)")
         } catch {
             // Lỗi khác
             errorMessage = "Login failed: \(error.localizedDescription)"
-            print("❌ Lỗi đăng nhập: \(error)")
         }
         
         isLoading = false
@@ -110,11 +226,9 @@ class AuthViewModel: ObservableObject {
             // Clear current user
             currentUser = nil
             
-            print("✅ Đăng xuất thành công")
             
         } catch {
             errorMessage = "Logout failed: \(error.localizedDescription)"
-            print("❌ Lỗi đăng xuất: \(error)")
         }
         
         isLoading = false
@@ -126,7 +240,6 @@ class AuthViewModel: ObservableObject {
     private func handleForcedLogout() {
         currentUser = nil
         errorMessage = "Session expired. Please login again."
-        print("⚠️ User bị logout do token hết hạn")
     }
 }
 

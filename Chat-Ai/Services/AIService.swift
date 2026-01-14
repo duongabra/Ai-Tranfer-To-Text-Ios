@@ -75,10 +75,8 @@ actor AIService {
             throw AIError.requestFailed
         }
         
-        // Nếu lỗi, in ra để debug
         if !(200...299).contains(httpResponse.statusCode) {
             if let errorString = String(data: data, encoding: .utf8) {
-                print("❌ Groq API Error: \(errorString)")
             }
             throw AIError.requestFailed
         }
@@ -138,7 +136,6 @@ actor AIService {
         
         if !(200...299).contains(httpResponse.statusCode) {
             if let errorString = String(data: data, encoding: .utf8) {
-                print("❌ OpenAI API Error: \(errorString)")
             }
             throw AIError.requestFailed
         }

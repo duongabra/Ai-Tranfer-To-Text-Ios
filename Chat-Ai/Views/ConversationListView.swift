@@ -9,8 +9,8 @@ import SwiftUI
 
 struct ConversationListView: View {
     
-    // StateObject: tạo và giữ ViewModel trong suốt lifecycle của View
-    @StateObject private var viewModel = ConversationListViewModel()
+    // Dùng shared ViewModel để có cùng data với ConversationListDrawer
+    @ObservedObject private var viewModel = ConversationListViewModel.shared
     
     // EnvironmentObject: Lấy AuthViewModel từ parent
     @EnvironmentObject var authViewModel: AuthViewModel
@@ -119,9 +119,11 @@ struct ConversationListView: View {
             } message: {
                 Text("This action cannot be undone. All conversations and messages will be permanently deleted.")
             }
-            // Load conversations khi view xuất hiện
+            // Refresh conversations khi view xuất hiện (nếu cần)
             .task {
-                await viewModel.loadConversations()
+                if viewModel.conversations.isEmpty {
+                    await viewModel.loadConversations()
+                }
             }
         }
     }

@@ -84,9 +84,7 @@ actor TranscribeService {
             }
             
             guard (200...299).contains(httpResponse.statusCode) else {
-                print("❌ Transcribe Audio Error - Status: \(httpResponse.statusCode)")
                 if let errorString = String(data: data, encoding: .utf8) {
-                    print("❌ Error Response: \(errorString)")
                 }
                 throw TranscribeError.requestFailed
             }
@@ -99,10 +97,8 @@ actor TranscribeService {
                 throw TranscribeError.transcriptionFailed
             }
             
-            print("✅ Audio transcribed successfully")
             return transcribeResponse.transcription
         } catch let error as NSError where error.domain == NSURLErrorDomain && error.code == NSURLErrorTimedOut {
-            print("❌ Transcription timeout: \(error.localizedDescription)")
             throw TranscribeError.timeout
         } catch {
             // Re-throw nếu đã là TranscribeError
@@ -125,9 +121,6 @@ actor TranscribeService {
     func transcribeVideoURL(videoURL: String, userId: Int) async throws -> String {
         let url = URL(string: "\(AppConfig.transcribeAPIURL)/transcribe/video-url")!
         
-        print("🔗 Transcribe API URL: \(url.absoluteString)")
-        print("📹 Video URL: \(videoURL)")
-        print("👤 User ID: \(userId)")
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -144,8 +137,6 @@ actor TranscribeService {
         // ✅ Tăng timeout cho transcription (video có thể mất nhiều thời gian)
         request.timeoutInterval = 600 // 10 phút (600 giây)
         
-        print("⏱️ Request timeout: \(request.timeoutInterval) seconds")
-        print("📤 Sending transcription request...")
         
         // Call API với error handling cho timeout
         let startTime = Date()
@@ -153,25 +144,18 @@ actor TranscribeService {
             let (data, response) = try await URLSession.shared.data(for: request)
             
             let elapsedTime = Date().timeIntervalSince(startTime)
-            print("⏱️ Request completed in \(String(format: "%.2f", elapsedTime)) seconds")
             
             guard let httpResponse = response as? HTTPURLResponse else {
-                print("❌ Invalid HTTP response")
                 throw TranscribeError.requestFailed
             }
             
-            print("📥 Response Status: \(httpResponse.statusCode)")
-            print("📥 Response Headers: \(httpResponse.allHeaderFields)")
             
             guard (200...299).contains(httpResponse.statusCode) else {
-                print("❌ Transcribe Video Error - Status: \(httpResponse.statusCode)")
                 if let errorString = String(data: data, encoding: .utf8) {
-                    print("❌ Error Response: \(errorString)")
                 }
                 throw TranscribeError.requestFailed
             }
             
-            print("✅ Received response data: \(data.count) bytes")
             
             // Parse response
             let decoder = JSONDecoder()
@@ -181,22 +165,13 @@ actor TranscribeService {
                 throw TranscribeError.transcriptionFailed
             }
             
-            print("✅ Video transcribed successfully")
             return transcribeResponse.transcription
         } catch let error as NSError where error.domain == NSURLErrorDomain && error.code == NSURLErrorTimedOut {
             let elapsedTime = Date().timeIntervalSince(startTime)
-            print("❌ Transcription timeout after \(String(format: "%.2f", elapsedTime)) seconds")
-            print("❌ Error: \(error.localizedDescription)")
-            print("❌ Error code: \(error.code)")
             throw TranscribeError.timeout
         } catch {
             let elapsedTime = Date().timeIntervalSince(startTime)
-            print("❌ Transcription error after \(String(format: "%.2f", elapsedTime)) seconds")
-            print("❌ Error: \(error.localizedDescription)")
             if let nsError = error as NSError? {
-                print("❌ Error domain: \(nsError.domain)")
-                print("❌ Error code: \(nsError.code)")
-                print("❌ Error userInfo: \(nsError.userInfo)")
             }
             
             // Re-throw nếu đã là TranscribeError

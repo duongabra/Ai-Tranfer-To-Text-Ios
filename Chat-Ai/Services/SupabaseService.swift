@@ -64,12 +64,10 @@ actor SupabaseService {
             
             // ✅ Kiểm tra 401 Unauthorized → Token hết hạn
             if httpResponse.statusCode == 401 {
-                print("❌ 401 Unauthorized - Token hết hạn")
                 throw SupabaseError.unauthorized
             }
             
             guard (200...299).contains(httpResponse.statusCode) else {
-                print("❌ Supabase error: Status \(httpResponse.statusCode)")
                 throw SupabaseError.requestFailed
             }
             
@@ -81,7 +79,6 @@ actor SupabaseService {
             return conversations
         } catch let error as NSError where error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled {
             // ⚠️ Request bị cancel → Throw CancellationError để ViewModel xử lý
-            print("⚠️ Request cancelled")
             throw CancellationError()
         }
     }
@@ -122,15 +119,12 @@ actor SupabaseService {
         
         // ✅ Kiểm tra 401 Unauthorized → Token hết hạn
         if httpResponse.statusCode == 401 {
-            print("❌ 401 Unauthorized - Token hết hạn")
             throw SupabaseError.unauthorized
         }
         
         guard (200...299).contains(httpResponse.statusCode) else {
             // Debug: In ra lỗi chi tiết
-            print("❌ Supabase Error - Status Code: \(httpResponse.statusCode)")
             if let errorString = String(data: data, encoding: .utf8) {
-                print("❌ Error Response: \(errorString)")
             }
             throw SupabaseError.requestFailed
         }
@@ -165,7 +159,6 @@ actor SupabaseService {
         
         // ✅ Kiểm tra 401 Unauthorized → Token hết hạn
         if httpResponse.statusCode == 401 {
-            print("❌ 401 Unauthorized - Token hết hạn")
             throw SupabaseError.unauthorized
         }
         
@@ -194,20 +187,16 @@ actor SupabaseService {
         
         // ✅ Kiểm tra 401 Unauthorized → Token hết hạn
         if httpResponse.statusCode == 401 {
-            print("❌ 401 Unauthorized - Token hết hạn")
             throw SupabaseError.unauthorized
         }
         
         guard (200...299).contains(httpResponse.statusCode) else {
             // Debug: In ra lỗi chi tiết
-            print("❌ Delete All Conversations Error - Status Code: \(httpResponse.statusCode)")
             if let errorString = String(data: data, encoding: .utf8) {
-                print("❌ Error Response: \(errorString)")
             }
             throw SupabaseError.requestFailed
         }
         
-        print("✅ Deleted all conversations for user \(userId)")
     }
     
     // MARK: - Messages Methods
@@ -216,6 +205,8 @@ actor SupabaseService {
     /// - Parameter conversationId: ID của conversation
     /// - Returns: Mảng các Message, sắp xếp theo thời gian tạo
     func fetchMessages(conversationId: UUID) async throws -> [Message] {
+        print("📥 [SupabaseService] fetchMessages() - ConversationId: \(conversationId)")
+        
         guard let url = URL(string: "\(AppConfig.supabaseURL)/rest/v1/messages?conversation_id=eq.\(conversationId.uuidString)&order=created_at.asc") else {
             throw SupabaseError.invalidURL
         }
@@ -223,25 +214,35 @@ actor SupabaseService {
         // Tạo authenticated GET request
         let request = try await createAuthenticatedRequest(url: url, method: "GET")
         
+        print("📥 [SupabaseService] Đang fetch messages từ DB...")
         let (data, response) = try await URLSession.shared.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
             throw SupabaseError.requestFailed
         }
         
+        print("📥 [SupabaseService] HTTP Status Code: \(httpResponse.statusCode)")
+        
         // ✅ Kiểm tra 401 Unauthorized → Token hết hạn
         if httpResponse.statusCode == 401 {
-            print("❌ 401 Unauthorized - Token hết hạn")
             throw SupabaseError.unauthorized
         }
         
         guard (200...299).contains(httpResponse.statusCode) else {
+            if let errorString = String(data: data, encoding: .utf8) {
+                print("📥 [SupabaseService] Error response: \(errorString)")
+            }
             throw SupabaseError.requestFailed
         }
         
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let messages = try decoder.decode([Message].self, from: data)
+        
+        print("📥 [SupabaseService] Đã fetch \(messages.count) messages từ DB")
+        for (index, message) in messages.enumerated() {
+            print("📥 [SupabaseService] Message \(index): role=\(message.role.rawValue), id=\(message.id), content=\(message.content.prefix(50))...")
+        }
         
         return messages
     }
@@ -265,6 +266,10 @@ actor SupabaseService {
         fileType: String? = nil,
         fileSize: Int? = nil
     ) async throws -> Message {
+        print("💾 [SupabaseService] createMessage() - Role nhận được: \(role.rawValue)")
+        print("💾 [SupabaseService] createMessage() - Content length: \(content.count)")
+        print("💾 [SupabaseService] createMessage() - ConversationId: \(conversationId)")
+        
         let newMessage = Message(
             conversationId: conversationId,
             role: role,
@@ -275,6 +280,8 @@ actor SupabaseService {
             fileSize: fileSize
         )
         
+        print("💾 [SupabaseService] newMessage role: \(newMessage.role.rawValue)")
+        
         guard let url = URL(string: "\(AppConfig.supabaseURL)/rest/v1/messages") else {
             throw SupabaseError.invalidURL
         }
@@ -283,24 +290,34 @@ actor SupabaseService {
         encoder.dateEncodingStrategy = .iso8601
         let jsonData = try encoder.encode(newMessage)
         
+        // Debug: In ra JSON để kiểm tra role
+        if let jsonString = String(data: jsonData, encoding: .utf8) {
+            print("💾 [SupabaseService] JSON data gửi lên DB: \(jsonString)")
+        }
+        
         // Tạo authenticated POST request
         var request = try await createAuthenticatedRequest(url: url, method: "POST")
         request.setValue("return=representation", forHTTPHeaderField: "Prefer")
         request.httpBody = jsonData
         
+        print("💾 [SupabaseService] Đang gửi request lên DB...")
         let (data, response) = try await URLSession.shared.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
             throw SupabaseError.requestFailed
         }
         
+        print("💾 [SupabaseService] HTTP Status Code: \(httpResponse.statusCode)")
+        
         // ✅ Kiểm tra 401 Unauthorized → Token hết hạn
         if httpResponse.statusCode == 401 {
-            print("❌ 401 Unauthorized - Token hết hạn")
             throw SupabaseError.unauthorized
         }
         
         guard (200...299).contains(httpResponse.statusCode) else {
+            if let errorString = String(data: data, encoding: .utf8) {
+                print("💾 [SupabaseService] Error response: \(errorString)")
+            }
             throw SupabaseError.requestFailed
         }
         
@@ -311,6 +328,10 @@ actor SupabaseService {
         guard let createdMessage = messages.first else {
             throw SupabaseError.decodingFailed
         }
+        
+        print("💾 [SupabaseService] Message đã lưu vào DB thành công")
+        print("💾 [SupabaseService] Created message role từ DB: \(createdMessage.role.rawValue)")
+        print("💾 [SupabaseService] Created message id: \(createdMessage.id)")
         
         return createdMessage
     }
@@ -373,19 +394,15 @@ actor SupabaseService {
         
         // ✅ Kiểm tra 401 Unauthorized → Token hết hạn
         if httpResponse.statusCode == 401 {
-            print("❌ 401 Unauthorized - Token hết hạn")
             throw SupabaseError.unauthorized
         }
         
         guard (200...299).contains(httpResponse.statusCode) else {
-            print("❌ Update title error: Status \(httpResponse.statusCode)")
             if let errorString = String(data: data, encoding: .utf8) {
-                print("❌ Error Response: \(errorString)")
             }
             throw SupabaseError.requestFailed
         }
         
-        print("✅ Updated conversation title to: \(newTitle)")
     }
     
     /// Xóa tất cả messages trong một conversation
@@ -406,7 +423,6 @@ actor SupabaseService {
         
         // ✅ Kiểm tra 401 Unauthorized → Token hết hạn
         if httpResponse.statusCode == 401 {
-            print("❌ 401 Unauthorized - Token hết hạn")
             throw SupabaseError.unauthorized
         }
         
@@ -414,7 +430,145 @@ actor SupabaseService {
             throw SupabaseError.requestFailed
         }
         
-        print("✅ Deleted all messages in conversation \(conversationId)")
+    }
+    
+    // MARK: - User Profile Methods
+    
+    /// Lấy user profile từ database
+    /// - Parameter userId: ID của user
+    /// - Returns: Dictionary chứa firstName, lastName, avatarURL hoặc nil nếu không có
+    func getUserProfile(userId: UUID) async throws -> [String: String?]? {
+        guard let url = URL(string: "\(AppConfig.supabaseURL)/rest/v1/user_profiles?user_id=eq.\(userId.uuidString)") else {
+            throw SupabaseError.invalidURL
+        }
+        
+        let request = try await createAuthenticatedRequest(url: url, method: "GET")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SupabaseError.requestFailed
+        }
+        
+        
+        if httpResponse.statusCode == 401 {
+            throw SupabaseError.unauthorized
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw SupabaseError.requestFailed
+        }
+        
+        // Parse response
+        if let jsonArray = try JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+           let profile = jsonArray.first {
+            let result = [
+                "first_name": profile["first_name"] as? String,
+                "last_name": profile["last_name"] as? String,
+                "avatar_url": profile["avatar_url"] as? String
+            ]
+            return result
+        }
+        
+        return nil
+    }
+    
+    /// Lưu hoặc cập nhật user profile vào database
+    /// - Parameters:
+    ///   - userId: ID của user
+    ///   - firstName: Tên
+    ///   - lastName: Họ
+    ///   - avatarURL: URL của avatar (optional)
+    func saveUserProfile(userId: UUID, firstName: String?, lastName: String?, avatarURL: String?) async throws {
+        // Kiểm tra xem profile đã tồn tại chưa
+        let existingProfile = try? await getUserProfile(userId: userId)
+        
+        // Chỉ thêm các field có giá trị (không gửi nil)
+        var profileData: [String: Any] = [
+            "user_id": userId.uuidString,
+            "updated_at": ISO8601DateFormatter().string(from: Date())
+        ]
+        
+        if let firstName = firstName, !firstName.isEmpty {
+            profileData["first_name"] = firstName
+        } else if firstName == nil && existingProfile == nil {
+            // Nếu là insert mới và firstName là nil, không thêm vào
+        } else if firstName != nil {
+            // Nếu firstName là empty string, set null để xóa
+            profileData["first_name"] = NSNull()
+        }
+        
+        if let lastName = lastName, !lastName.isEmpty {
+            profileData["last_name"] = lastName
+        } else if lastName == nil && existingProfile == nil {
+            // Nếu là insert mới và lastName là nil, không thêm vào
+        } else if lastName != nil {
+            // Nếu lastName là empty string, set null để xóa
+            profileData["last_name"] = NSNull()
+        }
+        
+        if let avatarURL = avatarURL {
+            profileData["avatar_url"] = avatarURL
+        }
+        
+        let jsonData = try JSONSerialization.data(withJSONObject: profileData)
+        
+        if existingProfile != nil {
+            // Update existing profile
+            guard let url = URL(string: "\(AppConfig.supabaseURL)/rest/v1/user_profiles?user_id=eq.\(userId.uuidString)") else {
+                throw SupabaseError.invalidURL
+            }
+            
+            var request = try await createAuthenticatedRequest(url: url, method: "PATCH")
+            request.httpBody = jsonData
+            
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw SupabaseError.requestFailed
+            }
+            
+            if httpResponse.statusCode == 401 {
+                throw SupabaseError.unauthorized
+            }
+            
+            guard (200...299).contains(httpResponse.statusCode) else {
+                if let errorString = String(data: data, encoding: .utf8) {
+                }
+                throw SupabaseError.requestFailed
+            }
+            
+        } else {
+            // Insert new profile
+            guard let url = URL(string: "\(AppConfig.supabaseURL)/rest/v1/user_profiles") else {
+                throw SupabaseError.invalidURL
+            }
+            
+            var profileDataWithCreated = profileData
+            profileDataWithCreated["created_at"] = ISO8601DateFormatter().string(from: Date())
+            let insertData = try JSONSerialization.data(withJSONObject: profileDataWithCreated)
+            
+            var request = try await createAuthenticatedRequest(url: url, method: "POST")
+            request.setValue("return=representation", forHTTPHeaderField: "Prefer")
+            request.httpBody = insertData
+            
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw SupabaseError.requestFailed
+            }
+            
+            if httpResponse.statusCode == 401 {
+                throw SupabaseError.unauthorized
+            }
+            
+            guard (200...299).contains(httpResponse.statusCode) else {
+                if let errorString = String(data: data, encoding: .utf8) {
+                }
+                throw SupabaseError.requestFailed
+            }
+            
+        }
     }
 }
 

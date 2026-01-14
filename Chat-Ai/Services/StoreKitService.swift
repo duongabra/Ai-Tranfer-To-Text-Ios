@@ -26,14 +26,7 @@ actor StoreKitService {
             "com.whales.freechat.monthly"
         ]
         
-        print("📦 Requesting products: \(productIds)")
-        
         let products = try await Product.products(for: productIds)
-        
-        print("📦 Received \(products.count) products from StoreKit")
-        for product in products {
-            print("  - \(product.id): \(product.displayName) - \(product.displayPrice)")
-        }
         
         var plans: [SubscriptionPlan] = []
         
@@ -48,25 +41,21 @@ actor StoreKitService {
                     storeKitProduct: product
                 )
                 plans.append(plan)
-                print("✅ Added Yearly plan: \(product.displayPrice)")
             } else if product.id == "com.whales.freechat.monthly" {
                 let plan = SubscriptionPlan(
                     type: .monthly,
                     storeKitProduct: product
                 )
                 plans.append(plan)
-                print("✅ Added Monthly plan: \(product.displayPrice)")
             } else if product.id == "com.whales.freechat.weekly" {
                 let plan = SubscriptionPlan(
                     type: .weekly,
                     storeKitProduct: product
                 )
                 plans.append(plan)
-                print("✅ Added Weekly plan: \(product.displayPrice)")
             }
         }
         
-        print("✅ Loaded \(plans.count) plans from StoreKit 2")
         return plans
     }
     
@@ -74,6 +63,8 @@ actor StoreKitService {
     
     /// Mua một subscription
     func purchase(product: Product) async throws {
+        print("🛒 [StoreKitService] Initiating purchase for: \(product.id)")
+        
         let result = try await product.purchase()
         
         switch result {
@@ -81,22 +72,31 @@ actor StoreKitService {
             // Verify transaction
             switch verification {
             case .verified(let transaction):
-                print("✅ Purchase successful: \(transaction.productID)")
+                print("✅ [StoreKitService] Purchase successful!")
+                print("   - Product ID: \(transaction.productID)")
+                print("   - Transaction ID: \(transaction.id)")
+                print("   - Purchase Date: \(transaction.purchaseDate)")
+                if let expirationDate = transaction.expirationDate {
+                    print("   - Expiration Date: \(expirationDate)")
+                }
                 await transaction.finish()
             case .unverified(let transaction, let error):
-                print("⚠️ Purchase unverified: \(error)")
+                print("⚠️ [StoreKitService] Purchase unverified:")
+                print("   - Product ID: \(transaction.productID)")
+                print("   - Error: \(error)")
                 await transaction.finish()
             }
             
         case .userCancelled:
-            print("⚠️ User cancelled purchase")
+            print("⚠️ [StoreKitService] User cancelled purchase")
             throw StoreKitError.userCancelled
             
         case .pending:
-            print("⏳ Purchase pending")
+            print("⏳ [StoreKitService] Purchase pending approval")
             throw StoreKitError.purchasePending
             
         @unknown default:
+            print("❌ [StoreKitService] Unknown purchase result")
             throw StoreKitError.unknown
         }
     }
@@ -106,26 +106,46 @@ actor StoreKitService {
     /// Kiểm tra product ID nào đang active (user đã mua)
     /// - Returns: Product ID của gói đang active, hoặc nil nếu chưa mua gói nào
     func getCurrentSubscriptionProductId() async -> String? {
+        print("🔍 [StoreKitService] Checking current subscription...")
+        
         // StoreKit 2: Lấy tất cả transactions hiện tại
+        var foundActiveSubscription = false
         for await result in Transaction.currentEntitlements {
             // Verify transaction
             switch result {
             case .verified(let transaction):
+                print("📦 [StoreKitService] Found transaction: \(transaction.productID)")
+                print("   - Product Type: \(transaction.productType)")
+                print("   - Purchase Date: \(transaction.purchaseDate)")
+                
                 // Kiểm tra xem transaction có phải subscription không
                 // và có còn active không (chưa expire)
-                if transaction.productType == .autoRenewable,
-                   let expirationDate = transaction.expirationDate,
-                   expirationDate > Date() {
-                    print("📱 Found active subscription: \(transaction.productID)")
-                    return transaction.productID
+                if transaction.productType == .autoRenewable {
+                    if let expirationDate = transaction.expirationDate {
+                        print("   - Expiration Date: \(expirationDate)")
+                        print("   - Is Expired: \(expirationDate <= Date())")
+                        
+                        if expirationDate > Date() {
+                            print("✅ [StoreKitService] Active subscription found: \(transaction.productID)")
+                            foundActiveSubscription = true
+                            return transaction.productID
+                        } else {
+                            print("⚠️ [StoreKitService] Subscription expired: \(transaction.productID)")
+                        }
+                    } else {
+                        print("   - No expiration date")
+                    }
                 }
                 
-            case .unverified:
+            case .unverified(let transaction, let error):
+                print("⚠️ [StoreKitService] Unverified transaction: \(transaction.productID) - \(error)")
                 continue
             }
         }
         
-        print("📱 No active subscription found")
+        if !foundActiveSubscription {
+            print("❌ [StoreKitService] No active subscription found")
+        }
         return nil
     }
 }

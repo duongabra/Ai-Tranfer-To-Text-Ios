@@ -17,7 +17,6 @@ class NavigationCoordinator: ObservableObject {
         var newPath = NavigationPath()
         newPath.append(conversation)
         navigationPath = newPath
-        print("🔄 NavigationCoordinator: Navigated to conversation, count: \(navigationPath.count)")
     }
     
     func navigateToHome() {
@@ -26,7 +25,6 @@ class NavigationCoordinator: ObservableObject {
         if count > 0 {
             navigationPath.removeLast(count)
         }
-        print("🔄 NavigationCoordinator: Navigated to home, count: \(navigationPath.count)")
     }
     
     func replaceConversation(_ conversation: Conversation) {
@@ -34,7 +32,6 @@ class NavigationCoordinator: ObservableObject {
         var newPath = NavigationPath()
         newPath.append(conversation)
         navigationPath = newPath
-        print("🔄 NavigationCoordinator: Replaced conversation, count: \(navigationPath.count)")
     }
 }
 

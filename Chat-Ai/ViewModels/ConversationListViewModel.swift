@@ -12,6 +12,9 @@ import Foundation
 @MainActor
 class ConversationListViewModel: ObservableObject {
     
+    // Shared instance để các view có thể dùng chung
+    static let shared = ConversationListViewModel()
+    
     // @Published: khi giá trị thay đổi, SwiftUI sẽ tự động update UI
     @Published var conversations: [Conversation] = []  // Danh sách conversations
     @Published var isLoading = false                   // Đang load dữ liệu?
@@ -19,6 +22,10 @@ class ConversationListViewModel: ObservableObject {
     
     // ✅ Prevent multiple simultaneous loads
     private var loadTask: Task<Void, Never>?
+    
+    private init() {
+        // Private init để chỉ có thể tạo instance qua shared
+    }
     
     /// Load tất cả conversations từ database
     func loadConversations() async {
@@ -50,7 +57,6 @@ class ConversationListViewModel: ObservableObject {
                 conversations = try await SupabaseService.shared.fetchConversations()
                 // Chỉ print khi task không bị cancel
                 if !Task.isCancelled {
-                    print("✅ Loaded \(conversations.count) conversations")
                 }
             } catch is CancellationError {
                 // Task bị cancel → Không làm gì, không in log
@@ -65,7 +71,6 @@ class ConversationListViewModel: ObservableObject {
                 // Chỉ hiển thị lỗi nếu task không bị cancel
                 if !Task.isCancelled {
                     errorMessage = "Cannot load list: \(error.localizedDescription)"
-                    print("❌ Error loading conversations: \(error)")
                 }
             }
             
@@ -95,7 +100,6 @@ class ConversationListViewModel: ObservableObject {
             }
             
             errorMessage = "Cannot create conversation: \(error.localizedDescription)"
-            print("❌ Error creating conversation: \(error)")
         }
     }
     
@@ -116,7 +120,6 @@ class ConversationListViewModel: ObservableObject {
             }
             
             errorMessage = "Cannot delete: \(error.localizedDescription)"
-            print("❌ Error deleting conversation: \(error)")
         }
     }
     
@@ -129,7 +132,6 @@ class ConversationListViewModel: ObservableObject {
             // Clear local array
             conversations.removeAll()
             
-            print("✅ Cleared all conversations")
         } catch {
             // ✅ Kiểm tra nếu là lỗi 401 Unauthorized → Logout
             if let supabaseError = error as? SupabaseError, supabaseError == .unauthorized {
@@ -138,7 +140,6 @@ class ConversationListViewModel: ObservableObject {
             }
             
             errorMessage = "Cannot delete: \(error.localizedDescription)"
-            print("❌ Error clearing all conversations: \(error)")
         }
     }
 }

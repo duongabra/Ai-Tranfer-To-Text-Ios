@@ -109,7 +109,7 @@ struct SubscriptionPlan: Identifiable {
         case .weekly:
             return "$2.99"
         case .monthly:
-            return "$199"
+            return "$29"
         case .yearly:
             return "$199"
         }

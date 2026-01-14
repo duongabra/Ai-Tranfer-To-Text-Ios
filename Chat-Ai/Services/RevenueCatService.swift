@@ -7,6 +7,7 @@
 
 import Foundation
 import RevenueCat
+import StoreKit
 
 // MARK: - RevenueCatService
 
@@ -25,10 +26,8 @@ actor RevenueCatService {
         let apiKey = AppConfig.revenueCatAPIKey
         
         // Configure RevenueCat
-        Purchases.logLevel = .debug // Bật debug log để dễ debug
         Purchases.configure(withAPIKey: apiKey)
         
-        print("✅ RevenueCat configured successfully")
     }
     
     // MARK: - Get Offerings
@@ -38,50 +37,65 @@ actor RevenueCatService {
         return try await Purchases.shared.offerings()
     }
     
-    /// Lấy danh sách subscription plans với giá thật từ RevenueCat
+    /// Lấy danh sách subscription plans với giá thật từ StoreKit 2
+    /// TẠM THỜI: Dùng StoreKit 2 trực tiếp cho cả simulator và real device
+    /// Sau này sẽ chuyển sang RevenueCat Dashboard khi đã ổn định
     func getAvailablePlans() async throws -> [SubscriptionPlan] {
+        // Tạm thời dùng StoreKit 2 trực tiếp từ StoreKit Configuration file
+        return try await getAvailablePlansFromStoreKit()
+    }
+    
+    /// Lấy plans từ RevenueCat Dashboard
+    private func getAvailablePlansFromRevenueCat() async throws -> [SubscriptionPlan] {
         let offerings = try await getOfferings()
         
         guard let currentOffering = offerings.current else {
-            print("⚠️ No current offering found")
-            // Trả về gói Free nếu không có offerings
             return [SubscriptionPlan(type: .free)]
         }
         
-        print("📦 Current offering: \(currentOffering.identifier)")
-        print("📦 Available packages count: \(currentOffering.availablePackages.count)")
         
         var plans: [SubscriptionPlan] = []
-        
-        // Luôn thêm gói Free đầu tiên
         plans.append(SubscriptionPlan(type: .free))
         
-        // Duyệt qua các packages trong offering
         for package in currentOffering.availablePackages {
             let productId = package.storeProduct.productIdentifier
-            let packageId = package.identifier
             
-            print("📦 Package: \(packageId) → Product: \(productId)")
-            
-            // Map product ID với plan type
             if productId == "com.whales.freechat.yearly" {
-                let plan = SubscriptionPlan(type: .yearly, package: package)
-                plans.append(plan)
-                print("✅ Added Yearly plan")
+                plans.append(SubscriptionPlan(type: .yearly, package: package))
             } else if productId == "com.whales.freechat.monthly" {
-                let plan = SubscriptionPlan(type: .monthly, package: package)
-                plans.append(plan)
-                print("✅ Added Monthly plan")
+                plans.append(SubscriptionPlan(type: .monthly, package: package))
             } else if productId == "com.whales.freechat.weekly" {
-                let plan = SubscriptionPlan(type: .weekly, package: package)
-                plans.append(plan)
-                print("✅ Added Weekly plan")
-            } else {
-                print("⚠️ Unknown product: \(productId)")
+                plans.append(SubscriptionPlan(type: .weekly, package: package))
             }
         }
         
-        print("✅ Loaded \(plans.count) subscription plans from RevenueCat")
+        return plans
+    }
+    
+    /// Lấy plans trực tiếp từ StoreKit 2 (StoreKit Configuration file)
+    private func getAvailablePlansFromStoreKit() async throws -> [SubscriptionPlan] {
+        
+        let productIds = [
+            "com.whales.freechat.yearly",
+            "com.whales.freechat.monthly"
+        ]
+        
+        let products = try await Product.products(for: productIds)
+        
+        for product in products {
+        }
+        
+        var plans: [SubscriptionPlan] = []
+        plans.append(SubscriptionPlan(type: .free))
+        
+        for product in products {
+            if product.id == "com.whales.freechat.yearly" {
+                plans.append(SubscriptionPlan(type: .yearly, storeKitProduct: product))
+            } else if product.id == "com.whales.freechat.monthly" {
+                plans.append(SubscriptionPlan(type: .monthly, storeKitProduct: product))
+            }
+        }
+        
         return plans
     }
     
@@ -125,7 +139,6 @@ actor RevenueCatService {
             
             return false
         } catch {
-            print("❌ Error checking subscription: \(error)")
             return false
         }
     }
@@ -166,7 +179,6 @@ actor RevenueCatService {
             )
             
         } catch {
-            print("❌ Error getting subscription status: \(error)")
             return SubscriptionStatus(
                 currentPlan: SubscriptionPlan(type: .free),
                 isActive: false,

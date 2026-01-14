@@ -2,163 +2,224 @@
 //  SettingsView.swift
 //  Chat-Ai
 //
-//  Settings popup trong drawer
+//  Settings popup trong drawer 
 //
 
 import SwiftUI
 import UIKit
+import Foundation
 
 struct SettingsView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var authViewModel: AuthViewModel
     @EnvironmentObject var navigationCoordinator: NavigationCoordinator
     
+    @Binding var isPresented: Bool
+    
+    @State private var showingEditProfile = false
+    @State private var showingLogoutConfirmation = false
+    @State private var hasActiveSubscription = false
+    
+    init(isPresented: Binding<Bool> = .constant(true)) {
+        _isPresented = isPresented
+    }
+    
     var body: some View {
         ZStack(alignment: .bottom) {
-            // Background blur overlay
-            Color.black.opacity(0.3)
-                .ignoresSafeArea()
-                .onTapGesture {
-                    dismiss()
+            backgroundOverlay
+            modalContent
+        }
+        .ignoresSafeArea(edges: .bottom)
+        .task {
+            await checkSubscriptionStatus()
+        }
+        .overlay(alignment: .bottom) {
+            if showingEditProfile {
+                EditProfileView(isPresented: $showingEditProfile)
+                    .environmentObject(authViewModel)
+                    .transition(.move(edge: .bottom))
+                    .zIndex(1000)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if showingLogoutConfirmation {
+                LogoutConfirmationView(isPresented: $showingLogoutConfirmation)
+                    .environmentObject(authViewModel)
+                    .transition(.move(edge: .bottom))
+                    .zIndex(2000)
+            }
+        }
+    }
+    
+    // MARK: - Background Overlay
+    
+    private var backgroundOverlay: some View {
+        Color.black.opacity(0.3)
+            .ignoresSafeArea()
+            .onTapGesture {
+                withAnimation {
+                    isPresented = false
                 }
+            }
+    }
+    
+    // MARK: - Modal Content
+    
+    private var modalContent: some View {
+        VStack(spacing: 0) {
+            headerView
+            contentScrollView
+        }
+        .frame(maxHeight: UIScreen.main.bounds.height * 0.9)
+        .background(Color.white)
+        .cornerRadius(16, corners: [.topLeft, .topRight])
+    }
+    
+    // MARK: - Header View
+    
+    private var headerView: some View {
+        HStack {
+            Spacer()
+                .frame(width: 40)
             
-            // Modal content - bottom sheet
-            VStack(spacing: 0) {
-                // Header
-                HStack {
-                    // Empty space for centering
-                    Spacer()
-                        .frame(width: 40)
-                    
-                    Spacer()
-                    
-                    Text("Settings")
-                        .font(.custom("Overused Grotesk", size: 16))
-                        .fontWeight(.semibold)
-                        .foregroundColor(.textPrimary)
-                    
-                    Spacer()
-                    
-                    // Close button
-                    Button(action: {
-                        dismiss()
-                    }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 16))
-                            .foregroundColor(.textPrimary)
-                            .frame(width: 40, height: 40)
-                    }
+            Spacer()
+            
+            Text("Settings")
+                .font(.custom("Overused Grotesk", size: 16))
+                .fontWeight(.semibold)
+                .foregroundColor(Color(hex: "#020202"))
+                .multilineTextAlignment(.center)
+                .lineSpacing(0)
+                .lineLimit(1)
+                .textCase(nil)
+                .environment(\.font, .custom("Overused Grotesk", size: 16))
+                .font(.system(size: 16, weight: .semibold))
+                .fontDesign(.default)
+                .monospacedDigit()
+                .frame(height: 24, alignment: .center)
+            
+            Spacer()
+            
+            Button(action: {
+                withAnimation {
+                    isPresented = false
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 16)
-                
-                // Content
-                ScrollView {
-                    VStack(spacing: 16) {
+            }) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 16))
+                    .foregroundColor(.textPrimary)
+                    .frame(width: 40, height: 40)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 16)
+    }
+    
+    // MARK: - Content Scroll View
+    
+    private var contentScrollView: some View {
+        ScrollView {
+            VStack(spacing: 16) {
                         // User Profile Section
                         VStack(spacing: 8) {
                                 // Avatar
-                                AsyncImage(url: URL(string: authViewModel.currentUser?.avatarURL ?? "")) { phase in
-                                    switch phase {
-                                    case .empty, .failure:
-                                        Circle()
-                                            .fill(Color(hex: "D9D9D9"))
-                                            .frame(width: 64, height: 64)
-                                            .overlay(
-                                                Text(formatUserName(authViewModel.currentUser?.displayName ?? authViewModel.currentUser?.email ?? "U").prefix(1).uppercased())
-                                                    .font(.custom("Overused Grotesk", size: 24))
-                                                    .fontWeight(.semibold)
-                                                    .foregroundColor(.textPrimary)
-                                            )
-                                    case .success(let image):
-                                        image
-                                            .resizable()
-                                            .aspectRatio(contentMode: .fill)
-                                            .frame(width: 64, height: 64)
-                                            .clipShape(Circle())
-                                    @unknown default:
-                                        EmptyView()
-                                    }
-                                }
+                                AvatarView(avatarURL: authViewModel.currentUser?.avatarURL, size: 64)
                                 
                                 // Name and Email
                                 VStack(spacing: 4) {
-                                    Text(authViewModel.currentUser?.displayName ?? "User")
+                                    UserDisplayNameText()
+                                        .environmentObject(authViewModel)
                                         .font(.custom("Overused Grotesk", size: 16))
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(.textPrimary)
+                                        .fontWeight(.semibold) // 600
+                                        .foregroundColor(Color(hex: "#020202")) // matches var(--text-neutral-text-neutral-primary, #020202)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail) // for text-overflow: ellipsis
+                                        .multilineTextAlignment(.center) // text-align: center
+                                        .monospacedDigit() // for tabular-nums, lining-nums is default in SwiftUI
+                                        .frame(maxWidth: .infinity, minHeight: 24, maxHeight: 24, alignment: .center) // line-height: 24px; overflow hidden via lineLimit
                                     
                                     Text(formatEmail(authViewModel.currentUser?.email ?? ""))
                                         .font(.custom("Overused Grotesk", size: 14))
                                         .fontWeight(.regular)
-                                        .foregroundColor(.textTertiary)
+                                        .foregroundColor(Color.black.opacity(0.6)) // rgba(0,0,0,0.60)
+                                        .multilineTextAlignment(.center)
+                                        .monospacedDigit() // tabular-nums, lining-nums is default in SwiftUI
+                                        .lineLimit(1)
+                                        .frame(maxWidth: .infinity, minHeight: 20, maxHeight: 20, alignment: .center)
                                 }
                                 
                                 // Edit Profile Button
                                 Button(action: {
-                                    // TODO: Navigate to edit profile
+                                    showingEditProfile = true
                                 }) {
                                     Text("Edit Profile")
                                         .font(.custom("Overused Grotesk", size: 13))
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(.textPrimary)
+                                        .fontWeight(.semibold) // 600 weight
+                                        .foregroundColor(Color(hex: "#020202"))
                                         .padding(.horizontal, 16)
                                         .padding(.vertical, 8)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: 16)
                                                 .stroke(Color.borderGray, lineWidth: 1)
                                         )
+                                        .lineSpacing(3) // 16px line height - 13px font size = 3px
+                                        .monospacedDigit() // ensures tabular nums
+                                        .fontDesign(.monospaced) // for slashed zero/lining if available, fallback
                                 }
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.top, 8)
                         
-                        // Upgrade to Pro Section
-                        HStack(spacing: 8) {
-                                // Icon
-                                Image("icon-trailing")
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 40, height: 40)
-                                    .padding(2)
-                                
-                                // Text
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Upgrade to Pro")
-                                        .font(.custom("Overused Grotesk", size: 16))
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(.textPrimary)
+                        // Upgrade to Pro Section - Chỉ hiển thị nếu chưa có subscription
+                        if !hasActiveSubscription {
+                            HStack(spacing: 8) {
+                                    // Icon
+                                    Image("icon-trailing")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 40, height: 40)
+                                        .padding(2)
                                     
-                                    Text("Pro unlocks higher limits")
-                                        .font(.custom("Overused Grotesk", size: 12))
-                                        .fontWeight(.regular)
-                                        .foregroundColor(.textTertiary)
-                                }
-                                
-                                Spacer()
-                                
-                                // Upgrade Button
-                                Button(action: {
-                                    dismiss()
-                                    navigationCoordinator.navigationPath.append(PaywallDestination())
-                                }) {
-                                    Text("Upgrade")
-                                        .font(.custom("Overused Grotesk", size: 14))
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(.textWhite)
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 8)
-                                        .background(Color.primaryOrange)
-                                        .cornerRadius(16)
-                                }
+                                    // Text
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("Upgrade to Pro")
+                                            .font(.custom("Overused Grotesk", size: 16).weight(.semibold)   )
+                                            .foregroundColor(Color(hex: "#020202")) // var(--text-neutral-text-neutral-primary, #020202)
+                                            .lineLimit(1)
+                                            .truncationMode(.tail) // text-overflow: ellipsis
+                                            .frame(maxWidth: .infinity, minHeight: 24, maxHeight: 24, alignment: .leading) // line-height: 24px; overflow hidden via lineLimit
+                                        
+                                        Text("Pro unlocks higher limits")
+                                            .font(.custom("Overused Grotesk", size: 12).weight(.regular))
+                                            .foregroundColor(Color.black.opacity(0.6))
+                                            .multilineTextAlignment(.leading)
+                                            .frame(maxWidth: .infinity, minHeight: 12, maxHeight: 12, alignment: .leading)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    // Upgrade Button
+                                    Button(action: {
+                                        handleUpgrade()
+                                    }) {
+                                        Text("Upgrade")
+                                            .font(.custom("Overused Grotesk", size: 14).weight(.semibold))
+                                            .foregroundColor(Color(hex: "#FAFAFA")) // var(--text-neutral-text-neutral-inverse-primary, #FAFAFA)
+                                            .frame(minHeight: 20, maxHeight: 20, alignment: .center) // line-height: 20px
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 8)
+                                            .background(Color.primaryOrange)
+                                            .cornerRadius(16)
+                                    }
+                            }
+                            .padding(16)
+                            .background(Color.primaryOrange.opacity(0.1))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(Color.primaryOrange.opacity(0.2), lineWidth: 1)
+                            )
+                            .cornerRadius(16)
                         }
-                        .padding(16)
-                        .background(Color.primaryOrange.opacity(0.1))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(Color.primaryOrange.opacity(0.2), lineWidth: 1)
-                        )
-                        .cornerRadius(16)
                         
                         // Settings Options
                         VStack(spacing: 0) {
@@ -181,7 +242,7 @@ struct SettingsView: View {
                             
                             // Terms of Services
                             SettingsRow(
-                                iconImage: "Group (2)",
+                                iconImage: "group_2",
                                 title: "Terms of Services",
                                 showArrow: true,
                                 action: {
@@ -197,7 +258,7 @@ struct SettingsView: View {
                             
                             // Privacy
                             SettingsRow(
-                                iconImage: "Group (3)",
+                                iconImage: "group_3",
                                 title: "Privacy",
                                 showArrow: true,
                                 action: {
@@ -215,16 +276,8 @@ struct SettingsView: View {
                         
                         // Log Out Button
                         Button(action: {
-                                Task {
-                                    do {
-                                        try await AuthService.shared.signOut()
-                                        authViewModel.currentUser = nil
-                                        dismiss()
-                                    } catch {
-                                        print("❌ Sign out error: \(error)")
-                                    }
-                                }
-                            }) {
+                            showingLogoutConfirmation = true
+                        }) {
                                 HStack(spacing: 8) {
                                     Image("align_arrow_right_line")
                                         .renderingMode(.template)
@@ -234,12 +287,13 @@ struct SettingsView: View {
                                         .foregroundColor(Color(hex: "CC0A00"))
                                     
                                     Text("Log Out")
-                                        .font(.custom("Overused Grotesk", size: 14))
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(Color(hex: "CC0A00"))
+                                        .font(.custom("Overused Grotesk", size: 14).weight(.semibold))
+                                        .foregroundColor(Color(hex: "#CC0A00"))
                                 }
+                                .frame(maxWidth: .infinity, alignment: .leading)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
+                                .padding(.leading, 16)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 16)
                                         .stroke(Color(hex: "F4F4F4"), lineWidth: 1)
@@ -250,12 +304,21 @@ struct SettingsView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 16)
                 }
-            }
-            .frame(maxHeight: UIScreen.main.bounds.height * 0.9)
-            .background(Color.white)
-            .cornerRadius(16, corners: [.topLeft, .topRight])
-        }
-        .ignoresSafeArea(edges: .bottom)
+    }
+    
+    // MARK: - Check Subscription Status
+    
+    private func checkSubscriptionStatus() async {
+        // TẠM THỜI: Check subscription từ StoreKit 2
+        let currentProductId = await StoreKitService.shared.getCurrentSubscriptionProductId()
+        hasActiveSubscription = (currentProductId != nil)
+    }
+    
+    // MARK: - Upgrade Button Action
+    
+    private func handleUpgrade() {
+        dismiss()
+        navigationCoordinator.navigationPath.append(PaywallDestination())
     }
     
     private func formatUserName(_ name: String) -> String {
@@ -271,6 +334,8 @@ struct SettingsView: View {
         }
         return email
     }
+    
+    
 }
 
 // MARK: - Settings Row
@@ -301,17 +366,16 @@ struct SettingsRow: View {
                 }
                 
                 Text(title)
-                    .font(.custom("Overused Grotesk", size: 14))
-                    .fontWeight(.semibold)
-                    .foregroundColor(.textPrimary)
+                    .font(.custom("Overused Grotesk", size: 14).weight(.semibold))
+                    .foregroundColor(Color(hex: "#020202")) // var(--text-neutral-text-neutral-primary, #020202)
                 
                 Spacer()
                 
                 if let value = value {
                     Text(value)
                         .font(.custom("Overused Grotesk", size: 14))
-                        .fontWeight(.regular)
-                        .foregroundColor(.textSecondary)
+                        .foregroundColor(Color(hex: "#303030")) // var(--text-neutral-text-neutral-secondary, #303030)
+                        .frame(maxWidth: .infinity, alignment: .trailing) // text-align: right
                 }
                 
                 if showArrow {
@@ -326,10 +390,48 @@ struct SettingsRow: View {
     }
 }
 
+// MARK: - User Display Name View
+
+struct UserDisplayNameText: View {
+    @EnvironmentObject var authViewModel: AuthViewModel
+    @State private var displayName: String = "User"
+    
+    var body: some View {
+        Text(displayName)
+            .onAppear {
+                loadDisplayName()
+            }
+            .onChange(of: authViewModel.currentUser?.id) { _ in
+                loadDisplayName()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .userProfileUpdated)) { _ in
+                // Refresh khi có notification profile đã được update
+                loadDisplayName()
+            }
+    }
+    
+    private func loadDisplayName() {
+        Task {
+            let name = await authViewModel.getUserDisplayName()
+            await MainActor.run {
+                displayName = name
+            }
+        }
+    }
+}
+
 // MARK: - Preview
 
 #Preview {
-    SettingsView()
+    SettingsView(isPresented: .constant(true))
+        .environmentObject(AuthViewModel())
+        .environmentObject(NavigationCoordinator())
+}
+
+
+
+#Preview {
+    SettingsView(isPresented: .constant(true))
         .environmentObject(AuthViewModel())
         .environmentObject(NavigationCoordinator())
 }

@@ -44,7 +44,6 @@ struct UploadFileModal: View {
                 .onAppear {
                     // Reset flag khi modal được mở
                     if !isUploaded {
-                        print("📱 Modal opened, resetting states")
                         uploadStatus = .idle
                         isUploaded = false
                     }
@@ -53,7 +52,6 @@ struct UploadFileModal: View {
             // Reset khi modal đóng
             Color.clear
                 .onAppear {
-                    print("📱 Modal closed, resetting all states")
                     uploadStatus = .idle
                     isUploaded = false
                     uploadedFileURL = nil
@@ -112,13 +110,11 @@ struct UploadFileModal: View {
             
             // Nếu đã upload thành công và không phải file mới, không xử lý onChange
             if isUploaded && !isNewFile {
-                print("⚠️ Ignoring onChange because file already uploaded (isUploaded = true)")
                 return
             }
             
             // Nếu đang ở success state và không phải file mới, không xử lý onChange
             if case .success = uploadStatus, !isNewFile {
-                print("⚠️ Ignoring onChange because already in success state")
                 return
             }
             
@@ -571,7 +567,6 @@ struct UploadFileModal: View {
                     customMaxSize: Int(maxFileSize)
                 )
                 
-                print("✅ File uploaded successfully: \(fileURL)")
                 
                 // Bước 2: Nếu là video hoặc audio → Transcribe
                 if file.type == .video || file.type == .audio {
@@ -579,7 +574,6 @@ struct UploadFileModal: View {
                         uploadStatus = .loading
                     }
                     
-                    print("🎵 Starting transcription for \(file.type.rawValue)...")
                     
                     // Gọi TranscribeService
                     let userId = 8042467986 // Fixed user_id for transcribe API
@@ -594,38 +588,45 @@ struct UploadFileModal: View {
                         )
                     } else {
                         // Transcribe video (sử dụng file URL)
-                        print("📹 Calling transcribeVideoURL with URL: \(fileURL)")
                         let transcribeStartTime = Date()
                         transcription = try await TranscribeService.shared.transcribeVideoURL(
                             videoURL: fileURL,
                             userId: userId
                         )
                         let transcribeElapsed = Date().timeIntervalSince(transcribeStartTime)
-                        print("⏱️ Transcription took \(String(format: "%.2f", transcribeElapsed)) seconds")
                     }
                     
-                    print("✅ Transcription successful: \(transcription.prefix(100))...")
                     
                     // Bước 3: Tạo conversation mới với title = fileName (không có extension)
                     let conversationTitle = (file.name as NSString).deletingPathExtension
                     let newConversation = try await SupabaseService.shared.createConversation(title: conversationTitle)
                     
-                    print("✅ Conversation created: \(newConversation.id)")
                     
-                    // Bước 4: Tạo message đầu tiên với transcription text
-                    let firstMessage = try await SupabaseService.shared.createMessage(
+                    // Bước 4: Tạo user message với file attachment
+                    print("📎 [UploadFileModal] Tạo user message với file attachment")
+                    let userMessage = try await SupabaseService.shared.createMessage(
                         conversationId: newConversation.id,
                         role: .user,
-                        content: transcription,
+                        content: "📎 Sent a file",
                         fileUrl: fileURL,
                         fileName: file.name,
                         fileType: file.type.rawValue,
                         fileSize: data.count
                     )
                     
-                    print("✅ First message created: \(firstMessage.id)")
+                    // Bước 5: Tạo assistant message với transcription text
+                    print("📝 [UploadFileModal] Tạo assistant message với transcription text")
+                    print("📝 [UploadFileModal] Role: assistant")
+                    print("📝 [UploadFileModal] Content length: \(transcription.count)")
+                    let transcriptionMessage = try await SupabaseService.shared.createMessage(
+                        conversationId: newConversation.id,
+                        role: .assistant, // ✅ Transcription text là assistant message
+                        content: transcription
+                    )
+                    print("📝 [UploadFileModal] Transcription message đã lưu với role: \(transcriptionMessage.role.rawValue)")
                     
-                    // Bước 5: Cập nhật timestamp của conversation
+                    
+                    // Bước 6: Cập nhật timestamp của conversation
                     try await SupabaseService.shared.updateConversationTimestamp(conversationId: newConversation.id)
                     
                     // Bước 6: Navigate đến ChatView
@@ -657,7 +658,6 @@ struct UploadFileModal: View {
                         // để tránh onChange trigger và reset về preview
                         isUploaded = true
                         uploadStatus = .success
-                        print("✅ Upload successful, status changed to .success, isUploaded = true")
                         
                         // Cập nhật selectedFile với URL mới sau khi đã set success
                         selectedFile = FileAttachment(
@@ -807,7 +807,6 @@ struct LocalFilePreviewView: View {
         let tempFile = tempDir.appendingPathComponent("\(UUID().uuidString).mp4")
         
         guard (try? data.write(to: tempFile)) != nil else {
-            print("❌ Failed to create temp video URL")
             return
         }
         
@@ -832,7 +831,6 @@ struct LocalFilePreviewView: View {
                 // Cleanup temp file
                 try? FileManager.default.removeItem(at: tempFile)
             } catch {
-                print("❌ Failed to extract video thumbnail: \(error)")
                 await MainActor.run {
                     videoThumbnail = nil
                 }
@@ -852,7 +850,6 @@ struct LocalFilePreviewView: View {
             try data.write(to: tempFile)
             return tempFile
         } catch {
-            print("❌ Failed to create temp audio URL: \(error)")
             return nil
         }
     }

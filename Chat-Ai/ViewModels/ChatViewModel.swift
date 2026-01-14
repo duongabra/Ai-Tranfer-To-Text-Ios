@@ -40,7 +40,13 @@ class ChatViewModel: ObservableObject {
         errorMessage = nil
         
         do {
+            print("📥 [ChatViewModel] loadMessages() - Đang load messages từ DB...")
             messages = try await SupabaseService.shared.fetchMessages(conversationId: conversation.id)
+            
+            print("📥 [ChatViewModel] loadMessages() - Đã load \(messages.count) messages")
+            for (index, message) in messages.enumerated() {
+                print("📥 [ChatViewModel] Message \(index): role=\(message.role.rawValue), content=\(message.content.prefix(50))...")
+            }
         } catch {
             // ✅ Kiểm tra nếu là lỗi 401 Unauthorized → Logout
             if let supabaseError = error as? SupabaseError, supabaseError == .unauthorized {
@@ -49,7 +55,6 @@ class ChatViewModel: ObservableObject {
             }
             
             errorMessage = "Cannot load messages: \(error.localizedDescription)"
-            print("❌ Error loading messages: \(error)")
         }
         
         isLoading = false
@@ -105,7 +110,6 @@ class ChatViewModel: ObservableObject {
             
             // Các lỗi khác
             errorMessage = "Cannot send message: \(error.localizedDescription)"
-            print("❌ Error sending message: \(error)")
         }
         
         isSending = false
@@ -119,8 +123,6 @@ class ChatViewModel: ObservableObject {
     ///   - fileName: Tên file
     ///   - fileType: Loại file
     func sendMessageWithFile(data: Data, fileName: String, fileType: FileAttachment.FileType) async {
-        print("📤 Starting file upload: \(fileName) (\(fileType.rawValue))")
-        print("📦 File size: \(data.count) bytes")
         
         isSending = true
         isUploadingFile = true
@@ -128,13 +130,11 @@ class ChatViewModel: ObservableObject {
         
         do {
             // Bước 1: Upload file lên Supabase Storage
-            print("☁️ Uploading to Supabase Storage...")
             let fileURL = try await StorageService.shared.uploadFile(
                 data: data,
                 fileName: fileName,
                 fileType: fileType
             )
-            print("✅ File uploaded: \(fileURL)")
             
             isUploadingFile = false
             
@@ -170,12 +170,10 @@ class ChatViewModel: ObservableObject {
                 )
             } else if fileType == .audio {
                 // ✅ Audio → Chỉ transcribe, KHÔNG gửi AI (user tự gửi sau)
-                print("🎵 Processing audio: \(fileName)")
                 isTranscribing = true
                 transcriptionProgress = "Converting audio to text..."
                 
                 let userId = 8042467986 // Fixed user_id for transcribe API
-                print("👤 User ID (fixed): \(userId)")
                 
                 let transcription = try await TranscribeService.shared.transcribeAudio(
                     audioData: data,
@@ -183,24 +181,35 @@ class ChatViewModel: ObservableObject {
                     userId: userId
                 )
                 
-                print("✅ Audio transcribed: \(transcription.prefix(100))...")
                 
                 isTranscribing = false
                 transcriptionProgress = nil
                 
-                // ✅ Tạo message với transcription text (KHÔNG gửi AI)
+                // ✅ Tạo message với transcription text - role là assistant vì đây là AI trả lời
+                print("🎵 [ChatViewModel] Tạo transcription message cho audio")
+                print("🎵 [ChatViewModel] Role: assistant")
+                print("🎵 [ChatViewModel] Content length: \(transcription.count)")
+                
                 let transcriptionMessage = Message(
                     conversationId: conversation.id,
-                    role: .user,
-                    content: "🎵 Audio transcription:\n\n\(transcription)"
+                    role: .assistant,
+                    content: transcription
                 )
                 
+                print("🎵 [ChatViewModel] Transcription message created với role: \(transcriptionMessage.role.rawValue)")
+                
                 // Lưu vào Supabase
+                print("🎵 [ChatViewModel] Đang lưu transcription message vào DB với role: assistant")
                 let savedMessage = try await SupabaseService.shared.createMessage(
                     conversationId: conversation.id,
-                    role: .user,
+                    role: .assistant,
                     content: transcriptionMessage.content
                 )
+                
+                print("🎵 [ChatViewModel] Transcription message đã lưu vào DB")
+                print("🎵 [ChatViewModel] Saved message role từ DB: \(savedMessage.role.rawValue)")
+                print("🎵 [ChatViewModel] Saved message id: \(savedMessage.id)")
+                
                 messages.append(savedMessage)
                 
                 // ✅ DỪNG ở đây, KHÔNG gửi AI
@@ -209,38 +218,46 @@ class ChatViewModel: ObservableObject {
                 return
             } else if fileType == .video {
                 // ✅ Video → Chỉ transcribe, KHÔNG gửi AI (user tự gửi sau)
-                print("🎥 Processing video: \(fileName)")
                 isTranscribing = true
                 transcriptionProgress = "Converting video to text..."
                 
                 let userId = 8042467986 // Fixed user_id for transcribe API
                 
-                print("📹 Video URL: \(fileURL)")
-                print("👤 User ID (fixed): \(userId)")
                 
                 let transcription = try await TranscribeService.shared.transcribeVideoURL(
                     videoURL: fileURL,
                     userId: userId
                 )
                 
-                print("✅ Video transcribed: \(transcription.prefix(100))...")
                 
                 isTranscribing = false
                 transcriptionProgress = nil
                 
-                // ✅ Tạo message với transcription text (KHÔNG gửi AI)
+                // ✅ Tạo message với transcription text - role là assistant vì đây là AI trả lời
+                print("🎥 [ChatViewModel] Tạo transcription message cho video")
+                print("🎥 [ChatViewModel] Role: assistant")
+                print("🎥 [ChatViewModel] Content length: \(transcription.count)")
+                
                 let transcriptionMessage = Message(
                     conversationId: conversation.id,
-                    role: .user,
-                    content: "🎥 Video transcription:\n\n\(transcription)"
+                    role: .assistant,
+                    content: transcription
                 )
                 
+                print("🎥 [ChatViewModel] Transcription message created với role: \(transcriptionMessage.role.rawValue)")
+                
                 // Lưu vào Supabase
+                print("🎥 [ChatViewModel] Đang lưu transcription message vào DB với role: assistant")
                 let savedMessage = try await SupabaseService.shared.createMessage(
                     conversationId: conversation.id,
-                    role: .user,
+                    role: .assistant,
                     content: transcriptionMessage.content
                 )
+                
+                print("🎥 [ChatViewModel] Transcription message đã lưu vào DB")
+                print("🎥 [ChatViewModel] Saved message role từ DB: \(savedMessage.role.rawValue)")
+                print("🎥 [ChatViewModel] Saved message id: \(savedMessage.id)")
+                
                 messages.append(savedMessage)
                 
                 // ✅ DỪNG ở đây, KHÔNG gửi AI
@@ -271,7 +288,6 @@ class ChatViewModel: ObservableObject {
             
         } catch let error as StorageError {
             errorMessage = error.localizedDescription
-            print("❌ Storage error: \(error)")
         } catch {
             // ✅ Kiểm tra nếu là lỗi 401 Unauthorized → Logout
             if let supabaseError = error as? SupabaseError, supabaseError == .unauthorized {
@@ -280,7 +296,6 @@ class ChatViewModel: ObservableObject {
             }
             
             errorMessage = "Cannot send file: \(error.localizedDescription)"
-            print("❌ Error sending file: \(error)")
         }
         
         isSending = false
@@ -307,7 +322,6 @@ class ChatViewModel: ObservableObject {
             // Clear local array
             messages.removeAll()
             
-            print("✅ Cleared all messages in conversation")
         } catch {
             // ✅ Kiểm tra nếu là lỗi 401 Unauthorized → Logout
             if let supabaseError = error as? SupabaseError, supabaseError == .unauthorized {
@@ -316,7 +330,6 @@ class ChatViewModel: ObservableObject {
             }
             
             errorMessage = "Cannot delete messages: \(error.localizedDescription)"
-            print("❌ Error clearing messages: \(error)")
         }
     }
     
@@ -326,7 +339,6 @@ class ChatViewModel: ObservableObject {
             // Xóa conversation trong database (messages sẽ tự động xóa do CASCADE)
             try await SupabaseService.shared.deleteConversation(id: conversation.id)
             
-            print("✅ Deleted conversation")
         } catch {
             // ✅ Kiểm tra nếu là lỗi 401 Unauthorized → Logout
             if let supabaseError = error as? SupabaseError, supabaseError == .unauthorized {
@@ -335,7 +347,6 @@ class ChatViewModel: ObservableObject {
             }
             
             errorMessage = "Cannot delete conversation: \(error.localizedDescription)"
-            print("❌ Error deleting conversation: \(error)")
         }
     }
     
@@ -354,7 +365,6 @@ class ChatViewModel: ObservableObject {
             // ✅ Update local title để UI tự động refresh
             conversationTitle = trimmedTitle
             
-            print("✅ Renamed conversation to: \(trimmedTitle)")
         } catch {
             // ✅ Kiểm tra nếu là lỗi 401 Unauthorized → Logout
             if let supabaseError = error as? SupabaseError, supabaseError == .unauthorized {
@@ -363,7 +373,6 @@ class ChatViewModel: ObservableObject {
             }
             
             errorMessage = "Cannot rename: \(error.localizedDescription)"
-            print("❌ Error renaming conversation: \(error)")
         }
     }
 }

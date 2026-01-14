@@ -117,23 +117,17 @@ actor StorageService {
         request.httpBody = data
 
         // Upload file
-        let (responseData, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
             (200...299).contains(httpResponse.statusCode)
         else {
-            print(
-                "❌ Upload failed with status: \((response as? HTTPURLResponse)?.statusCode ?? -1)")
-            if let errorString = String(data: responseData, encoding: .utf8) {
-                print("❌ Error response: \(errorString)")
-            }
             throw StorageError.uploadFailed
         }
 
         // Lấy public URL
         let publicURL = getPublicURL(for: uniqueFileName)
 
-        print("✅ File uploaded successfully: \(publicURL)")
         return publicURL
     }
 
@@ -270,6 +264,5 @@ actor StorageService {
             throw StorageError.uploadFailed
         }
 
-        print("✅ File deleted successfully")
     }
 }

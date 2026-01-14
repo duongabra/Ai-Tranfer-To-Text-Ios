@@ -128,7 +128,7 @@ struct HomeView: View {
             .environmentObject(navigationCoordinator)
             .overlay(alignment: .bottom) {
                 if showingSettings {
-                    SettingsView()
+                    SettingsView(isPresented: $showingSettings)
                         .environmentObject(authViewModel)
                         .environmentObject(navigationCoordinator)
                         .transition(.move(edge: .bottom))
@@ -194,10 +194,10 @@ struct HomeView: View {
     // MARK: - Image Placeholder
     
     private var ImagePlaceholder: some View {
-        Rectangle()
-            .stroke(Color.black, lineWidth: 1)
+        Image("Logo")
+            .resizable()
+            .scaledToFit()
             .frame(width: 80, height: 80)
-            .background(Color.clear)
     }
     
     // MARK: - Title Section
@@ -244,7 +244,6 @@ struct HomeView: View {
                 iconColor: Color(hex: "FF920A")
             ) {
                 // TODO: Handle paste link
-                print("Paste link tapped")
             }
         }
         .padding(.horizontal, 16)
@@ -255,27 +254,9 @@ struct HomeView: View {
     private func checkSubscriptionStatus() async {
         isLoadingSubscription = true
         
-        // Force refresh customer info từ RevenueCat để đảm bảo có data mới nhất
-        do {
-            let customerInfo = try await RevenueCatService.shared.getCustomerInfo()
-            print("🔍 Checking subscription status...")
-            print("🔍 Entitlements: \(customerInfo.entitlements.all)")
-            
-            if let premiumEntitlement = customerInfo.entitlements["premium"] {
-                print("🔍 Premium entitlement found:")
-                print("   - Is Active: \(premiumEntitlement.isActive)")
-                print("   - Product ID: \(premiumEntitlement.productIdentifier)")
-                print("   - Expiration Date: \(premiumEntitlement.expirationDate?.description ?? "nil")")
-            } else {
-                print("🔍 No premium entitlement found")
-            }
-            
-            hasActiveSubscription = await RevenueCatService.shared.hasActiveSubscription()
-            print("✅ Subscription status updated: \(hasActiveSubscription ? "PRO" : "UPGRADE")")
-        } catch {
-            print("❌ Error checking subscription: \(error)")
-            hasActiveSubscription = false
-        }
+        // TẠM THỜI: Check subscription từ StoreKit 2
+        let currentProductId = await StoreKitService.shared.getCurrentSubscriptionProductId()
+        hasActiveSubscription = (currentProductId != nil)
         
         isLoadingSubscription = false
     }
@@ -283,7 +264,6 @@ struct HomeView: View {
     // MARK: - Handle File Selected
     
     private func handleFileSelected(file: FileAttachment, data: Data) {
-        print("📁 File selected: \(file.name), type: \(file.type), size: \(data.count) bytes")
         
         // TODO: Xử lý file đã chọn
         // Có thể:
@@ -304,22 +284,23 @@ struct SubscriptionBadge: View {
     
     var body: some View {
         if isPro {
-            // Pro Badge (ảnh 2)
+            // Pro Badge - Crown trắng trên nền cam
             HStack(spacing: 4) {
                 Text("Pro")
                     .font(.labelMedium)
                     .foregroundColor(.white)
                 
-                Image(systemName: "crown.fill")
-                    .font(.custom("Overused Grotesk", size: 14))
-                    .foregroundColor(.white)
+                Image("VIP_2_fill")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 14, height: 14)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .background(Color.primaryOrange)
             .cornerRadius(9999)
         } else {
-            // Upgrade Badge (ảnh 1)
+            // Upgrade Badge - Crown cam trên nền trắng
             HStack(spacing: 4) {
                 Text("Upgrade")
                     .font(.labelMedium)

@@ -97,7 +97,6 @@ actor AuthService {
                     
                     // Xử lý error
                     if let error = error {
-                        print("❌ OAuth error: \(error)")
                         continuation.resume(throwing: AuthError.signInFailed)
                         return
                     }
@@ -174,6 +173,26 @@ actor AuthService {
         // Lưu session (bao gồm cả refresh token)
         await saveSession(user: user, accessToken: token, refreshToken: refreshToken)
         
+        // Nếu đăng nhập lần đầu và có ảnh từ Google/Apple, lưu vào DB
+        if let avatarURL = user.avatarURL, !avatarURL.isEmpty {
+            Task {
+                do {
+                    // Kiểm tra xem đã có profile trong DB chưa
+                    let existingProfile = try? await SupabaseService.shared.getUserProfile(userId: user.id)
+                    if existingProfile == nil {
+                        // Chưa có profile → đăng nhập lần đầu → lưu avatar vào DB
+                        try await SupabaseService.shared.saveUserProfile(
+                            userId: user.id,
+                            firstName: nil,
+                            lastName: nil,
+                            avatarURL: avatarURL
+                        )
+                    }
+                } catch {
+                }
+            }
+        }
+        
         return user
     }
     
@@ -211,7 +230,8 @@ actor AuthService {
         
         if let userMetadata = json["user_metadata"] as? [String: Any] {
             displayName = userMetadata["full_name"] as? String
-            avatarURL = userMetadata["avatar_url"] as? String
+            // Ưu tiên avatar_url, nếu không có thì lấy picture (từ Google)
+            avatarURL = userMetadata["avatar_url"] as? String ?? userMetadata["picture"] as? String
         }
         
         return User(
@@ -242,12 +262,88 @@ actor AuthService {
         
         // Với OAuth, chỉ cần clear local session là đủ
         // Không cần gọi Supabase logout endpoint vì token sẽ tự expire
-        print("✅ Đăng xuất thành công")
+    }
+    
+    // MARK: - Update User Profile
+    
+    /// Cập nhật thông tin profile của user
+    /// - Parameters:
+    ///   - firstName: Tên
+    ///   - lastName: Họ
+    ///   - avatarURL: URL của avatar (optional)
+    func updateUserProfile(firstName: String?, lastName: String?, avatarURL: String?) async throws {
+        guard let userId = getCurrentUser()?.id else {
+            throw AuthError.sessionExpired
+        }
+        
+        // Lưu vào database (user_profiles table) thay vì user_metadata
+        // Vì Supabase Auth merge với provider metadata và override custom fields
+        try await SupabaseService.shared.saveUserProfile(
+            userId: userId,
+            firstName: firstName,
+            lastName: lastName,
+            avatarURL: avatarURL
+        )
+        
+        // Cập nhật avatar_url trong user_metadata nếu có (để hiển thị avatar)
+        if let avatarURL = avatarURL {
+            guard let accessToken = getAccessToken() else {
+                throw AuthError.sessionExpired
+            }
+            
+            guard let url = URL(string: "\(AppConfig.supabaseURL)/auth/v1/user") else {
+                throw AuthError.invalidURL
+            }
+            
+            // Fetch user_metadata hiện tại để merge
+            var userMetadata: [String: Any] = [:]
+            
+            do {
+                var metadataRequest = URLRequest(url: url)
+                metadataRequest.httpMethod = "GET"
+                metadataRequest.setValue(AppConfig.supabaseAnonKey, forHTTPHeaderField: "apikey")
+                metadataRequest.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+                
+                let (metadataData, metadataResponse) = try await URLSession.shared.data(for: metadataRequest)
+                
+                if let httpResponse = metadataResponse as? HTTPURLResponse,
+                   (200...299).contains(httpResponse.statusCode),
+                   let json = try JSONSerialization.jsonObject(with: metadataData) as? [String: Any],
+                   let existingMetadata = json["user_metadata"] as? [String: Any] {
+                    userMetadata = existingMetadata
+                }
+            } catch {
+            }
+            
+            // Chỉ update avatar_url trong user_metadata
+            userMetadata["avatar_url"] = avatarURL
+            
+            let requestBody: [String: Any] = [
+                "user_metadata": userMetadata
+            ]
+            
+            let jsonData = try JSONSerialization.data(withJSONObject: requestBody)
+            
+            var request = URLRequest(url: url)
+            request.httpMethod = "PUT"
+            request.setValue(AppConfig.supabaseAnonKey, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = jsonData
+            
+            let (_, response) = try await URLSession.shared.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200...299).contains(httpResponse.statusCode) else {
+                return // Exit function if update fails (non-critical, profile already saved to database)
+            }
+        }
+        
     }
     
     // MARK: - Session Management
     
-    /// Lấy user hiện tại từ session
+    /// Lấy user hiện tại từ session (chỉ từ UserDefaults, không fetch từ Supabase)
     func getCurrentUser() -> User? {
         // Tạm thời lấy từ UserDefaults
         guard let userIdString = UserDefaults.standard.string(forKey: "userId"),
@@ -261,6 +357,91 @@ actor AuthService {
             email: email,
             createdAt: Date()
         )
+    }
+    
+    /// Refresh user info từ Supabase (fetch metadata mới nhất)
+    func refreshCurrentUser() async throws -> User {
+        guard let accessToken = getAccessToken() else {
+            throw AuthError.sessionExpired
+        }
+        
+        var user = try await fetchUserInfo(accessToken: accessToken)
+        
+        // Lấy avatarURL từ database (user_profiles table) nếu có
+        // Ưu tiên avatarURL từ DB vì đây là nơi lưu ảnh đã được user upload
+        if let userId = getCurrentUser()?.id,
+           let profile = try? await SupabaseService.shared.getUserProfile(userId: userId),
+           let avatarURL = profile["avatar_url"] as? String, !avatarURL.isEmpty {
+            user.avatarURL = avatarURL
+        }
+        
+        // Cập nhật session với user mới
+        if let session = currentSession {
+            currentSession = AuthSession(user: user, accessToken: session.accessToken)
+        }
+        
+        // Cập nhật UserDefaults với thông tin mới
+        UserDefaults.standard.set(user.id.uuidString, forKey: "userId")
+        UserDefaults.standard.set(user.email, forKey: "userEmail")
+        
+        return user
+    }
+    
+    /// Lấy firstName và lastName từ database (user_profiles table)
+    /// - Returns: Tuple (firstName, lastName) hoặc nil nếu không có
+    func getUserNameComponents() async -> (firstName: String?, lastName: String?) {
+        guard let userId = getCurrentUser()?.id else {
+            return (nil, nil)
+        }
+        
+        do {
+            // Ưu tiên lấy từ database (user_profiles table)
+            if let profile = try await SupabaseService.shared.getUserProfile(userId: userId) {
+                let firstName = profile["first_name"] ?? nil
+                let lastName = profile["last_name"] ?? nil
+                
+                if firstName != nil || lastName != nil {
+                    return (firstName, lastName)
+                }
+            }
+            
+            // Fallback: parse từ displayName từ user_metadata
+            guard let accessToken = getAccessToken() else {
+                return (nil, nil)
+            }
+            
+            let user = try await fetchUserInfo(accessToken: accessToken)
+            
+            if let displayName = user.displayName {
+                return parseNameFromDisplayName(displayName)
+            }
+            
+            return (nil, nil)
+            
+        } catch {
+            // Fallback: parse từ currentUser.displayName
+            if let currentUser = getCurrentUser(),
+               let displayName = currentUser.displayName {
+                return parseNameFromDisplayName(displayName)
+            }
+            return (nil, nil)
+        }
+    }
+    
+    /// Parse firstName và lastName từ displayName
+    private func parseNameFromDisplayName(_ displayName: String?) -> (firstName: String?, lastName: String?) {
+        guard let displayName = displayName, !displayName.isEmpty else {
+            return (nil, nil)
+        }
+        
+        let components = displayName.split(separator: " ")
+        if components.count >= 2 {
+            return (String(components[0]), String(components[1...].joined(separator: " ")))
+        } else if components.count == 1 {
+            return (String(components[0]), nil)
+        }
+        
+        return (nil, nil)
     }
     
     /// Lưu user session
@@ -278,13 +459,11 @@ actor AuthService {
         // Lưu refresh token (để tự động renew access token)
         if let refreshToken = refreshToken {
             UserDefaults.standard.set(refreshToken, forKey: "refreshToken")
-            print("✅ Saved refresh token")
         }
         
         // ✅ Lưu thời gian hết hạn của access token (Supabase mặc định: 1 giờ)
         let expirationDate = Date().addingTimeInterval(3600) // 1 hour from now
         UserDefaults.standard.set(expirationDate, forKey: "accessTokenExpirationDate")
-        print("✅ Access token will expire at: \(expirationDate)")
         
         // ✅ Bắt đầu background timer để tự động refresh token
         startAutoRefreshTimer()
@@ -308,7 +487,6 @@ actor AuthService {
     func refreshAccessToken() async throws -> String {
         // Lấy refresh token từ UserDefaults
         guard let refreshToken = UserDefaults.standard.string(forKey: "refreshToken") else {
-            print("❌ No refresh token found")
             throw AuthError.sessionExpired
         }
         
@@ -330,7 +508,6 @@ actor AuthService {
         
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
-            print("❌ Refresh token failed")
             throw AuthError.sessionExpired
         }
         
@@ -349,7 +526,6 @@ actor AuthService {
         let newExpirationDate = Date().addingTimeInterval(3600)
         UserDefaults.standard.set(newExpirationDate, forKey: "accessTokenExpirationDate")
         
-        print("✅ Access token refreshed successfully (expires at: \(newExpirationDate))")
         return newAccessToken
     }
     
@@ -369,12 +545,9 @@ actor AuthService {
                 
                 // Kiểm tra xem token có sắp hết hạn không
                 if shouldRefreshToken() {
-                    print("🔄 Token sắp hết hạn, đang refresh...")
                     do {
                         _ = try await refreshAccessToken()
-                        print("✅ Token đã được refresh tự động")
                     } catch {
-                        print("❌ Lỗi khi refresh token tự động: \(error)")
                         // Nếu refresh thất bại, dừng timer và yêu cầu user đăng nhập lại
                         stopAutoRefreshTimer()
                     }
@@ -382,14 +555,12 @@ actor AuthService {
             }
         }
         
-        print("✅ Đã bắt đầu auto-refresh timer")
     }
     
     /// Dừng background timer
     private func stopAutoRefreshTimer() {
         refreshTimer?.cancel()
         refreshTimer = nil
-        print("✅ Đã dừng auto-refresh timer")
     }
     
     /// Kiểm tra xem có nên refresh token không
@@ -407,18 +578,14 @@ actor AuthService {
     /// Kiểm tra và refresh token nếu cần (gọi khi app khởi động)
     func checkAndRefreshTokenIfNeeded() async {
         guard shouldRefreshToken() else {
-            print("✅ Token còn hạn, không cần refresh")
             return
         }
         
-        print("🔄 Token sắp hết hạn, đang refresh...")
         do {
             _ = try await refreshAccessToken()
-            print("✅ Token đã được refresh")
             // Bắt đầu timer sau khi refresh thành công
             startAutoRefreshTimer()
         } catch {
-            print("❌ Lỗi khi refresh token: \(error)")
         }
     }
     
@@ -427,7 +594,6 @@ actor AuthService {
     /// Xử lý lỗi 401 Unauthorized (token hết hạn)
     /// - Note: Tự động logout user và thông báo cần đăng nhập lại
     func handleUnauthorizedError() async {
-        print("⚠️ Token hết hạn, đang logout user...")
         do {
             try await signOut()
             
@@ -436,9 +602,7 @@ actor AuthService {
                 NotificationCenter.default.post(name: .userDidLogout, object: nil)
             }
             
-            print("✅ Đã logout user do token hết hạn")
         } catch {
-            print("❌ Lỗi khi logout: \(error)")
         }
     }
     
@@ -507,6 +671,8 @@ class WebAuthenticationPresentationContextProvider: NSObject, ASWebAuthenticatio
 extension Notification.Name {
     /// Notification khi user bị logout (do token hết hạn)
     static let userDidLogout = Notification.Name("userDidLogout")
+    /// Notification khi user profile được cập nhật
+    static let userProfileUpdated = Notification.Name("userProfileUpdated")
 }
 
 // MARK: - Apple Sign In Context Provider
@@ -576,7 +742,6 @@ class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate {
     }
     
     func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
-        print("❌ Apple Sign In error: \(error)")
         completion(.failure(AuthError.signInFailed))
     }
     
@@ -607,11 +772,9 @@ class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate {
         
         // Debug response
         if let responseString = String(data: data, encoding: .utf8) {
-            print("📦 Supabase Apple Sign In Response: \(responseString)")
         }
         
         guard (200...299).contains(httpResponse.statusCode) else {
-            print("❌ Supabase Apple Sign In failed with status: \(httpResponse.statusCode)")
             throw AuthError.signInFailed
         }
         
@@ -625,19 +788,45 @@ class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate {
             throw AuthError.signInFailed
         }
         
+        // Lấy avatar từ user_metadata nếu có (từ Apple)
+        var avatarURL: String? = nil
+        if let userJson = json["user"] as? [String: Any],
+           let userMetadata = userJson["user_metadata"] as? [String: Any] {
+            avatarURL = userMetadata["avatar_url"] as? String ?? userMetadata["picture"] as? String
+        }
+        
         // Tạo User object
         let user = User(
             id: id,
             email: email,
             createdAt: Date(),
             displayName: displayName,
-            avatarURL: nil
+            avatarURL: avatarURL
         )
         
         // Lưu session
         await AuthService.shared.saveSession(user: user, accessToken: accessToken, refreshToken: refreshToken)
         
-        print("✅ Apple Sign In successful")
+        // Nếu đăng nhập lần đầu và có ảnh từ Apple, lưu vào DB
+        if let avatarURL = avatarURL, !avatarURL.isEmpty {
+            Task {
+                do {
+                    // Kiểm tra xem đã có profile trong DB chưa
+                    let existingProfile = try? await SupabaseService.shared.getUserProfile(userId: id)
+                    if existingProfile == nil {
+                        // Chưa có profile → đăng nhập lần đầu → lưu avatar vào DB
+                        try await SupabaseService.shared.saveUserProfile(
+                            userId: id,
+                            firstName: nil,
+                            lastName: nil,
+                            avatarURL: avatarURL
+                        )
+                    }
+                } catch {
+                }
+            }
+        }
+        
         return user
     }
 }

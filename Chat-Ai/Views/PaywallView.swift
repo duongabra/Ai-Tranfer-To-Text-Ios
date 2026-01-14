@@ -196,64 +196,55 @@ struct PaywallView: View {
         isLoading = true
         errorMessage = nil
         
-        // Detect Simulator vs Real Device
-        #if targetEnvironment(simulator)
-        // SIMULATOR: Dùng StoreKit 2 thuần
-        print("📱 Running on Simulator - Using StoreKit 2")
+        // ✅ TẠM THỜI: Dùng StoreKit 2 trực tiếp từ StoreKit Configuration file
+        // Sau này sẽ chuyển sang RevenueCat Dashboard khi đã ổn định
         do {
-            // Bước 1: Lấy danh sách plans
+            // Bước 1: Lấy danh sách plans từ StoreKit 2 (tạm thời)
             availablePlans = try await StoreKitService.shared.getAvailablePlans()
             
-            // Bước 2: Check xem user đã mua gói nào chưa
+            // Bước 2: Check subscription status từ StoreKit 2
             let currentProductId = await StoreKitService.shared.getCurrentSubscriptionProductId()
-            print("📱 Current subscription: \(currentProductId ?? "none")")
+            
+            // Log subscription status để test
+            print("📱 [PaywallView] Current subscription status:")
+            print("   - Product ID: \(currentProductId ?? "none")")
+            if let productId = currentProductId {
+                if productId.contains("yearly") {
+                    print("   - Plan: Yearly")
+                } else if productId.contains("monthly") {
+                    print("   - Plan: Monthly")
+                } else if productId.contains("weekly") {
+                    print("   - Plan: Weekly")
+                } else {
+                    print("   - Plan: Unknown (\(productId))")
+                }
+            } else {
+                print("   - Plan: No active subscription")
+            }
             
             // Bước 3: Đánh dấu gói đang active
             availablePlans = availablePlans.map { plan in
                 var updatedPlan = plan
-                // So sánh product ID của plan với product ID đang active
                 updatedPlan.isCurrentPlan = (plan.type.rawValue == currentProductId)
                 return updatedPlan
             }
             
-            // Auto-select Yearly (nếu chưa mua)
+            // Auto-select Yearly (nếu chưa mua) hoặc gói khác (nếu đã mua)
             if currentProductId == nil {
+                // Chưa mua → chọn Yearly
                 selectedPlan = availablePlans.first(where: { $0.type == .yearly })
+                print("📱 [PaywallView] Auto-selected: Yearly (no active subscription)")
             } else {
-                // Nếu đã mua rồi, chọn gói khác (để upgrade/downgrade)
+                // Đã mua → chọn gói khác để upgrade/downgrade
                 selectedPlan = availablePlans.first(where: { !$0.isCurrentPlan && $0.isPremium })
+                print("📱 [PaywallView] Auto-selected: \(selectedPlan?.type ?? .free) (upgrade/downgrade)")
             }
             
             isLoading = false
         } catch {
-            print("❌ StoreKit error: \(error)")
             errorMessage = "Failed to load plans: \(error.localizedDescription)"
             isLoading = false
         }
-        #else
-        // REAL DEVICE: Dùng RevenueCat
-        print("📱 Running on Real Device - Using RevenueCat")
-        do {
-            availablePlans = try await RevenueCatService.shared.getAvailablePlans()
-            
-            // Check current subscription từ RevenueCat
-            let hasActiveSubscription = await RevenueCatService.shared.hasActiveSubscription()
-            print("📱 Has active subscription: \(hasActiveSubscription)")
-            
-            // Auto-select Yearly
-            if let yearlyPlan = availablePlans.first(where: { $0.type == .yearly }) {
-                selectedPlan = yearlyPlan
-            } else if let firstPremiumPlan = availablePlans.first(where: { $0.isPremium }) {
-                selectedPlan = firstPremiumPlan
-            }
-            
-            isLoading = false
-        } catch {
-            print("❌ RevenueCat error: \(error)")
-            errorMessage = "Failed to load plans: \(error.localizedDescription)"
-            isLoading = false
-        }
-        #endif
     }
     
     // MARK: - Subscribe Action
@@ -269,33 +260,43 @@ struct PaywallView: View {
         
         Task {
             do {
-                #if targetEnvironment(simulator)
-                // SIMULATOR: Dùng StoreKit 2
+                // ✅ TẠM THỜI: Dùng StoreKit 2 trực tiếp
                 guard let product = selectedPlan.storeKitProduct else {
                     errorMessage = "Product not available"
                     isLoading = false
                     return
                 }
-                try await StoreKitService.shared.purchase(product: product)
-                #else
-                // REAL DEVICE: Dùng RevenueCat
-                guard let package = selectedPlan.package else {
-                    errorMessage = "Package not available"
-                    isLoading = false
-                    return
-                }
-                _ = try await RevenueCatService.shared.purchase(package: package)
-                #endif
                 
-                // Thành công!
-                print("✅ Subscription successful!")
+                print("🛒 [PaywallView] Starting purchase...")
+                print("   - Product ID: \(product.id)")
+                print("   - Product Name: \(product.displayName)")
+                print("   - Price: \(product.displayPrice)")
+                
+                // Purchase qua StoreKit 2
+                try await StoreKitService.shared.purchase(product: product)
+                
+                print("✅ [PaywallView] Purchase successful!")
+                
+                // Check subscription status sau khi purchase
+                let newProductId = await StoreKitService.shared.getCurrentSubscriptionProductId()
+                print("📱 [PaywallView] Subscription status after purchase:")
+                print("   - Product ID: \(newProductId ?? "none")")
+                if let productId = newProductId {
+                    print("   - Plan: \(productId)")
+                } else {
+                    print("   - Plan: No active subscription (may need to wait for transaction to process)")
+                }
+                
+                // Refresh subscription status sau khi purchase
+                await SubscriptionViewModel.shared.refreshSubscriptionStatus()
+                
                 isLoading = false
                 dismiss() // Đóng paywall
                 
             } catch {
+                print("❌ [PaywallView] Purchase failed: \(error.localizedDescription)")
                 errorMessage = "Purchase failed: \(error.localizedDescription)"
                 isLoading = false
-                print("❌ Purchase error: \(error)")
             }
         }
     }
@@ -307,16 +308,10 @@ struct PaywallView: View {
         errorMessage = nil
         
         Task {
-            do {
-                _ = try await RevenueCatService.shared.restorePurchases()
-                print("✅ Purchases restored successfully!")
-                isLoading = false
-                dismiss()
-            } catch {
-                errorMessage = "Restore failed: \(error.localizedDescription)"
-                isLoading = false
-                print("❌ Restore error: \(error)")
-            }
+            // StoreKit 2 tự động restore purchases khi check Transaction.currentEntitlements
+            // Chỉ cần reload plans để check subscription status mới nhất
+            await loadPlans()
+            isLoading = false
         }
     }
     
@@ -394,15 +389,26 @@ struct PlanCard: View {
                 
                 // Price column
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(plan.price)
-                        .font(.custom("Overused Grotesk", size: 20))
-                        .fontWeight(.semibold)
-                        .foregroundColor(.primaryOrange)
-                    
-                    Text(plan.duration)
-                        .font(.custom("Overused Grotesk", size: 14))
-                        .fontWeight(.semibold)
-                        .foregroundColor(.textTertiary)
+                    if isYearlyPlan {
+                        // Gói năm: Hiển thị "$199 /yr" và "$16.6 / mo"
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("\(plan.price) /yr")
+                                .font(.custom("Overused Grotesk", size: 20))
+                                .fontWeight(.semibold)
+                                .foregroundColor(.primaryOrange)
+                            
+                            Text("$16.6 / mo")
+                                .font(.custom("Overused Grotesk", size: 14))
+                                .fontWeight(.regular)
+                                .foregroundColor(.textTertiary)
+                        }
+                    } else {
+                        // Gói tháng: Hiển thị "$29 /mo"
+                        Text("\(plan.price) /mo")
+                            .font(.custom("Overused Grotesk", size: 20))
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primaryOrange)
+                    }
                 }
             }
             .padding(.horizontal, 16)

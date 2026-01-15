@@ -7,6 +7,7 @@
 
 import SwiftUI
 import RevenueCat
+import StoreKit
 
 struct PaywallView: View {
     
@@ -15,6 +16,14 @@ struct PaywallView: View {
     @State private var selectedPlan: SubscriptionPlan?
     @State private var isLoading = false
     @State private var errorMessage: String?
+    
+    // Subscription info khi đã có gói
+    @State private var currentProductId: String?
+    @State private var expirationDate: Date?
+    @State private var nextPaymentDate: Date?
+    @State private var hasActiveSubscription = false
+    @State private var isSubscriptionCancelled = false
+    @State private var showManageSubscriptions = false
     
     var body: some View {
         ZStack {
@@ -25,124 +34,195 @@ struct PaywallView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     
-                    // MARK: - Art Illustration
-                    Image("art_illustration")
+                    // MARK: - Group Icon (thay art_illustration)
+                    Image(hasActiveSubscription ? "Group_4" : "art_illustration")
                         .resizable()
                         .scaledToFit()
-                        .frame(width: 358, height: 200)
-                        // .padding(.top, 16)
+                        .frame(width: hasActiveSubscription ? 96 : 358, height: hasActiveSubscription ? 96 : 200)
+                        .padding(.top, 16)
                     
                     // MARK: - Title + Description
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Go Pro for Full Access")
-                            .font(.custom("Overused Grotesk", size: 24))
-                            .fontWeight(.semibold)
-                            .monospacedDigit()
-                            .foregroundColor(.textPrimary)
-                            .multilineTextAlignment(.leading)
-                            .lineSpacing(32 - 24) // line-height: 32px
-                        
-                        Text("Unlock the complete summary and chat deeper with the video content.")
-                            .font(.custom("Overused Grotesk", size: 14))
-                            .fontWeight(.regular)
-                            .monospacedDigit()
-                            .foregroundColor(.textTertiary)
-                            .multilineTextAlignment(.leading)
-                            .lineSpacing(20 - 14) // line-height: 20px
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
-                    
-                    // MARK: - Features
-                    VStack(spacing: 8) {
-                        FeatureRow(
-                            icon: "video_camera_icon",
-                            text: "Unlimited video analyzing"
-                        )
-                        FeatureRow(
-                            icon: "document_icon",
-                            text: "Build your knowledge library"
-                        )
-                        FeatureRow(
-                            icon: "history_icon",
-                            text: "Save hours with Pro Summarizes"
-                        )
-                    }
-                    .environment(\.multilineTextAlignment, TextAlignment.center)
-                    .environment(\.font, Font.custom("Overused Grotesk", size: 16)
-                        .weight(.semibold)
-                    )
-                    .padding(.horizontal, 16)
-                    
-                    // MARK: - Plans
-                    if isLoading && availablePlans.isEmpty {
-                        ProgressView("Loading plans...")
-                            .padding()
-                    } else {
-                        VStack(spacing: 12) {
-                            // Sắp xếp: yearly lên trước, sau đó monthly
-                            ForEach(availablePlans.filter { $0.isPremium }.sorted { plan1, plan2 in
-                                if plan1.type == .yearly { return true }
-                                if plan2.type == .yearly { return false }
-                                if plan1.type == .monthly { return true }
-                                return false
-                            }) { plan in
-                                PlanCard(
-                                    plan: plan,
-                                    isSelected: selectedPlan?.id == plan.id,
-                                    onTap: {
-                                        selectedPlan = plan
-                                    }
-                                )
-                            }
+                    if hasActiveSubscription {
+                        // Có subscription: căn giữa
+                        VStack(alignment: .center, spacing: 4) {
+                            Text("You're on Pro")
+                                .font(.custom("Overused Grotesk", size: 24))
+                                .fontWeight(.semibold)
+                                .monospacedDigit()
+                                .foregroundColor(.textPrimary)
+                                .multilineTextAlignment(.center)
+                                .lineSpacing(32 - 24) // line-height: 32px
+                            
+                            Text("Full access is active on this account.")
+                                .font(.custom("Overused Grotesk", size: 14))
+                                .fontWeight(.regular)
+                                .monospacedDigit()
+                                .foregroundColor(.textTertiary)
+                                .multilineTextAlignment(.center)
+                                .lineSpacing(20 - 14) // line-height: 20px
                         }
+                        .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.horizontal, 16)
+                    } else {
+                        // Chưa có subscription: căn trái
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Go Pro for Full Access")
+                                .font(.custom("Overused Grotesk", size: 24))
+                                .fontWeight(.semibold)
+                                .monospacedDigit()
+                                .foregroundColor(.textPrimary)
+                                .multilineTextAlignment(.leading)
+                                .lineSpacing(32 - 24) // line-height: 32px
+                            
+                            Text("Unlock the complete summary and chat deeper with the video content.")
+                                .font(.custom("Overused Grotesk", size: 14))
+                                .fontWeight(.regular)
+                                .monospacedDigit()
+                                .foregroundColor(.textTertiary)
+                                .multilineTextAlignment(.leading)
+                                .lineSpacing(20 - 14) // line-height: 20px
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                    }
+                    
+                    // MARK: - Subscription Info Card (chỉ hiển thị khi có subscription)
+                    if hasActiveSubscription, let productId = currentProductId, let expirationDate = expirationDate {
+                        SubscriptionInfoCard(
+                            productId: productId,
+                            expirationDate: expirationDate,
+                            nextPaymentDate: nextPaymentDate ?? expirationDate,
+                            isCancelled: isSubscriptionCancelled
+                        )
+                        .padding(.horizontal, 16)
+                    }
+                    
+                    // MARK: - Features (chỉ hiển thị khi chưa có subscription)
+                    if !hasActiveSubscription {
+                        VStack(spacing: 8) {
+                            FeatureRow(
+                                icon: "video_camera_icon",
+                                text: "Unlimited video analyzing"
+                            )
+                            FeatureRow(
+                                icon: "document_icon",
+                                text: "Build your knowledge library"
+                            )
+                            FeatureRow(
+                                icon: "history_icon",
+                                text: "Save hours with Pro Summarizes"
+                            )
+                        }
+                        .environment(\.multilineTextAlignment, TextAlignment.center)
+                        .environment(\.font, Font.custom("Overused Grotesk", size: 16)
+                            .weight(.semibold)
+                        )
+                        .padding(.horizontal, 16)
+                    }
+                    
+                    // MARK: - Plans (chỉ hiển thị khi chưa có subscription)
+                    if !hasActiveSubscription {
+                        if isLoading && availablePlans.isEmpty {
+                            ProgressView("Loading plans...")
+                                .padding()
+                        } else {
+                            VStack(spacing: 12) {
+                                // Sắp xếp: yearly lên trước, sau đó monthly
+                                ForEach(availablePlans.filter { $0.isPremium }.sorted { plan1, plan2 in
+                                    if plan1.type == .yearly { return true }
+                                    if plan2.type == .yearly { return false }
+                                    if plan1.type == .monthly { return true }
+                                    return false
+                                }) { plan in
+                                    PlanCard(
+                                        plan: plan,
+                                        isSelected: selectedPlan?.id == plan.id,
+                                        onTap: {
+                                            selectedPlan = plan
+                                        }
+                                    )
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                        }
                     }
                     
                     // MARK: - Buttons
                     VStack(spacing: 8) {
-                        // Primary Button: Upgrade to Pro
-                        Button(action: {
-                            subscribeToPlan()
-                        }) {
-                            HStack(spacing: 8) {
-                                Image("crown_icon")
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 20, height: 20)
-                                    .padding(2)
-                                
-                                if isLoading {
-                                    ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .textWhite))
-                                } else {
-                                    Text("Upgrade to Pro")
-                                        .font(.custom("Overused Grotesk", size: 16))
-                                        .fontWeight(.semibold)
-                                }
+                        if hasActiveSubscription {
+                            // Khi đã có subscription: Manage Plan và Back to Home
+                            // Primary Button: Manage Plan
+                            Button(action: {
+                                managePlan()
+                            }) {
+                                Text("Manage Plan")
+                                    .font(.custom("Overused Grotesk", size: 16))
+                                    .fontWeight(.semibold)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .padding(.horizontal, 20)
+                                    .background(Color.primaryOrange)
+                                    .foregroundColor(.textWhite)
+                                    .cornerRadius(16)
+                            }
+                            
+                            // Secondary Button: Back to Home
+                            Button(action: {
+                                dismiss()
+                            }) {
+                                Text("Back to Home")
+                                    .font(.custom("Overused Grotesk", size: 16))
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.textPrimary)
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
                             .padding(.horizontal, 20)
-                            .padding(.leading, 10)
-                            .background(Color.primaryOrange)
-                            .foregroundColor(.textWhite)
-                            .cornerRadius(16)
+                        } else {
+                            // Khi chưa có subscription: Upgrade to Pro và Not now
+                            // Primary Button: Upgrade to Pro
+                            Button(action: {
+                                subscribeToPlan()
+                            }) {
+                                HStack(spacing: 8) {
+                                    Image("crown_icon")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 20, height: 20)
+                                        .padding(2)
+                                    
+                                    if isLoading {
+                                        ProgressView()
+                                            .progressViewStyle(CircularProgressViewStyle(tint: .textWhite))
+                                    } else {
+                                        Text("Upgrade to Pro")
+                                            .font(.custom("Overused Grotesk", size: 16))
+                                            .fontWeight(.semibold)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .padding(.horizontal, 20)
+                                .padding(.leading, 10)
+                                .background(Color.primaryOrange)
+                                .foregroundColor(.textWhite)
+                                .cornerRadius(16)
+                            }
+                            .disabled(isLoading || selectedPlan == nil)
+                            
+                            // Secondary Button: Not now
+                            Button(action: {
+                                dismiss()
+                            }) {
+                                Text("Not now")
+                                    .font(.custom("Overused Grotesk", size: 16))
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.textPrimary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .padding(.horizontal, 20)
                         }
-                        .disabled(isLoading || selectedPlan == nil)
-                        
-                        // Secondary Button: Not now
-                        Button(action: {
-                            dismiss()
-                        }) {
-                            Text("Not now")
-                                .font(.custom("Overused Grotesk", size: 16))
-                                .fontWeight(.semibold)
-                                .foregroundColor(.textPrimary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .padding(.horizontal, 20)
                     }
                     .padding(.horizontal, 16)
                     
@@ -185,6 +265,15 @@ struct PaywallView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
+        .manageSubscriptionsSheet(isPresented: $showManageSubscriptions)
+        .onChange(of: showManageSubscriptions) { oldValue, newValue in
+            // Khi manage subscriptions sheet đóng (từ true -> false), reload subscription status
+            if oldValue == true && newValue == false {
+                Task {
+                    await loadPlans()
+                }
+            }
+        }
         .task {
             await loadPlans()
         }
@@ -203,41 +292,54 @@ struct PaywallView: View {
             availablePlans = try await StoreKitService.shared.getAvailablePlans()
             
             // Bước 2: Check subscription status từ StoreKit 2
-            let currentProductId = await StoreKitService.shared.getCurrentSubscriptionProductId()
-            
-            // Log subscription status để test
-            print("📱 [PaywallView] Current subscription status:")
-            print("   - Product ID: \(currentProductId ?? "none")")
-            if let productId = currentProductId {
-                if productId.contains("yearly") {
-                    print("   - Plan: Yearly")
-                } else if productId.contains("monthly") {
-                    print("   - Plan: Monthly")
-                } else if productId.contains("weekly") {
-                    print("   - Plan: Weekly")
-                } else {
-                    print("   - Plan: Unknown (\(productId))")
+            if let subscriptionInfo = await StoreKitService.shared.getCurrentSubscriptionInfo() {
+                hasActiveSubscription = true
+                currentProductId = subscriptionInfo.productId
+                expirationDate = subscriptionInfo.expirationDate
+                isSubscriptionCancelled = subscriptionInfo.isCancelled
+                nextPaymentDate = subscriptionInfo.expirationDate // Next payment = expiration date (khi auto-renew)
+                
+                // Log subscription status để test
+                print("📱 [PaywallView] Current subscription status:")
+                print("   - Product ID: \(subscriptionInfo.productId)")
+                print("   - Expiration Date: \(subscriptionInfo.expirationDate)")
+                print("   - Is Cancelled: \(subscriptionInfo.isCancelled)")
+                print("   - Next Payment Date: \(nextPaymentDate?.description ?? "none")")
+                
+                // Đánh dấu gói đang active
+                availablePlans = availablePlans.map { plan in
+                    var updatedPlan = plan
+                    updatedPlan.isCurrentPlan = (plan.type.rawValue == subscriptionInfo.productId)
+                    return updatedPlan
                 }
+                
+                // Auto-select cùng loại gói để extend (yearly -> yearly, monthly -> monthly)
+                // Cho phép chọn cả gói đang active để extend
+                let currentPlanType = subscriptionInfo.productId.contains("yearly") ? SubscriptionPlan.PlanType.yearly : 
+                                     subscriptionInfo.productId.contains("monthly") ? SubscriptionPlan.PlanType.monthly : nil
+                
+                if let currentPlanType = currentPlanType {
+                    // Ưu tiên chọn cùng loại gói (có thể là gói đang active)
+                    selectedPlan = availablePlans.first(where: { $0.type == currentPlanType })
+                }
+                
+                // Nếu không tìm thấy cùng loại, chọn gói khác
+                if selectedPlan == nil {
+                    selectedPlan = availablePlans.first(where: { $0.isPremium })
+                }
+                
+                print("📱 [PaywallView] Auto-selected: \(selectedPlan?.type ?? .free) (extend plan)")
             } else {
-                print("   - Plan: No active subscription")
-            }
-            
-            // Bước 3: Đánh dấu gói đang active
-            availablePlans = availablePlans.map { plan in
-                var updatedPlan = plan
-                updatedPlan.isCurrentPlan = (plan.type.rawValue == currentProductId)
-                return updatedPlan
-            }
-            
-            // Auto-select Yearly (nếu chưa mua) hoặc gói khác (nếu đã mua)
-            if currentProductId == nil {
-                // Chưa mua → chọn Yearly
+                hasActiveSubscription = false
+                currentProductId = nil
+                expirationDate = nil
+                nextPaymentDate = nil
+                
+                print("📱 [PaywallView] No active subscription")
+                
+                // Auto-select Yearly (nếu chưa mua)
                 selectedPlan = availablePlans.first(where: { $0.type == .yearly })
                 print("📱 [PaywallView] Auto-selected: Yearly (no active subscription)")
-            } else {
-                // Đã mua → chọn gói khác để upgrade/downgrade
-                selectedPlan = availablePlans.first(where: { !$0.isCurrentPlan && $0.isPremium })
-                print("📱 [PaywallView] Auto-selected: \(selectedPlan?.type ?? .free) (upgrade/downgrade)")
             }
             
             isLoading = false
@@ -301,6 +403,24 @@ struct PaywallView: View {
         }
     }
     
+    // MARK: - Manage Plan Action
+    
+    private func managePlan() {
+        print("⚙️ [PaywallView] Opening manage subscriptions sheet...")
+        
+        // Mở manage subscriptions sheet để user có thể quản lý subscription
+        showManageSubscriptions = true
+    }
+    
+    // MARK: - Cancel Subscription Action
+    
+    private func cancelSubscription() {
+        print("🚫 [PaywallView] Opening manage subscriptions sheet...")
+        
+        // Mở manage subscriptions sheet để user có thể cancel trực tiếp trong app
+        showManageSubscriptions = true
+    }
+    
     // MARK: - Restore Purchases Action
     
     private func restorePurchases() {
@@ -328,6 +448,38 @@ struct PlanCard: View {
     // Monthly plan = gói tháng (background trắng)
     private var isYearlyPlan: Bool {
         return plan.type == .yearly
+    }
+    
+    /// Tính giá tháng từ giá năm (chia cho 12, làm tròn tối đa 1 chữ số thập phân)
+    private func monthlyPriceFromYearly(_ yearlyPrice: String) -> String {
+        // Parse giá năm: loại bỏ ký tự "$" và các ký tự không phải số/chấm
+        let cleanedPrice = yearlyPrice
+            .replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: ",", with: "")
+            .trimmingCharacters(in: .whitespaces)
+        
+        // Convert sang Double
+        guard let yearlyAmount = Double(cleanedPrice) else {
+            return "$0.0"
+        }
+        
+        // Chia cho 12 để ra giá tháng
+        let monthlyAmount = yearlyAmount / 12.0
+        
+        // Làm tròn tối đa 1 chữ số thập phân
+        let roundedAmount = (monthlyAmount * 10).rounded() / 10.0
+        
+        // Format thành string với 1 chữ số thập phân
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 1
+        
+        if let formattedString = formatter.string(from: NSNumber(value: roundedAmount)) {
+            return "$\(formattedString)"
+        }
+        
+        return "$\(String(format: "%.1f", roundedAmount))"
     }
     
     var body: some View {
@@ -390,21 +542,21 @@ struct PlanCard: View {
                 // Price column
                 VStack(alignment: .trailing, spacing: 2) {
                     if isYearlyPlan {
-                        // Gói năm: Hiển thị "$199 /yr" và "$16.6 / mo"
+                        // Gói năm: Hiển thị "$199 /yr" và giá tháng tính từ giá năm
                         VStack(alignment: .trailing, spacing: 2) {
-                            Text("\(plan.price) /yr")
+                            Text("\(plan.price) / yr")
                                 .font(.custom("Overused Grotesk", size: 20))
                                 .fontWeight(.semibold)
                                 .foregroundColor(.primaryOrange)
                             
-                            Text("$16.6 / mo")
+                            Text("\(monthlyPriceFromYearly(plan.price)) / mo")
                                 .font(.custom("Overused Grotesk", size: 14))
                                 .fontWeight(.regular)
                                 .foregroundColor(.textTertiary)
                         }
                     } else {
                         // Gói tháng: Hiển thị "$29 /mo"
-                        Text("\(plan.price) /mo")
+                        Text("\(plan.price) / mo")
                             .font(.custom("Overused Grotesk", size: 20))
                             .fontWeight(.semibold)
                             .foregroundColor(.primaryOrange)
@@ -433,8 +585,6 @@ struct PlanCard: View {
             .cornerRadius(16)
         }
         .buttonStyle(PlainButtonStyle())
-        .disabled(plan.isCurrentPlan)
-        .opacity(plan.isCurrentPlan ? 0.6 : 1.0)
     }
 }
 
@@ -462,6 +612,69 @@ struct FeatureRow: View {
             
             Spacer()
         }
+    }
+}
+
+// MARK: - Subscription Info Card
+
+struct SubscriptionInfoCard: View {
+    let productId: String
+    let expirationDate: Date
+    let nextPaymentDate: Date
+    let isCancelled: Bool
+    
+    private var planTitle: String {
+        if productId.contains("yearly") {
+            return "Yearly"
+        } else if productId.contains("monthly") {
+            return "Monthly"
+        } else {
+            return "Pro"
+        }
+    }
+    
+    private var planPrice: String {
+        if productId.contains("yearly") {
+            return "$199 / yr"
+        } else if productId.contains("monthly") {
+            return "$29 / mo"
+        } else {
+            return ""
+        }
+    }
+    
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, yyyy"
+        return formatter.string(from: date)
+    }
+    
+    var body: some View {
+        VStack(alignment: .center, spacing: 12) {
+            Text("\(planTitle) - \(planPrice)")
+                .font(.custom("Overused Grotesk", size: 14))
+                .fontWeight(.semibold)
+                .foregroundColor(.textPrimary)
+            
+            HStack(spacing: 0) {
+                Text(isCancelled ? "Access until: " : "Next payment: ")
+                    .font(.custom("Overused Grotesk", size: 14))
+                    .fontWeight(.regular)
+                    .foregroundColor(.textTertiary) // #717171
+                
+                Text(formatDate(nextPaymentDate))
+                    .font(.custom("Overused Grotesk", size: 14))
+                    .fontWeight(.regular)
+                    .foregroundColor(.textPrimary) // #020202
+            }
+        }
+        .padding(12)
+        .background(Color.white)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.primaryOrange.opacity(0.2), lineWidth: 1)
+        )
+        .cornerRadius(16)
     }
 }
 

@@ -29,5 +29,7 @@
 	<string>$(SUPABASE_URL)</string>
 	<key>TRANSCRIBE_API_URL</key>
 	<string>$(TRANSCRIBE_API_URL)</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 </dict>
 </plist>

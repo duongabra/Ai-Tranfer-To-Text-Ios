@@ -135,7 +135,10 @@ struct UploadFileModal: View {
             .ignoresSafeArea(edges: .all)
             .background(.ultraThinMaterial)
             .onTapGesture {
-                isPresented = false
+                // Không cho đóng modal khi đang upload hoặc đang loading
+                if uploadStatus != .loading {
+                    isPresented = false
+                }
             }
     }
     
@@ -154,7 +157,10 @@ struct UploadFileModal: View {
         HStack {
             // Close button (left) - invisible placeholder để căn giữa title
             Button(action: {
-                isPresented = false
+                // Không cho đóng khi đang upload
+                if uploadStatus != .loading {
+                    isPresented = false
+                }
             }) {
                 Image(systemName: "xmark")
                     .font(.custom("Overused Grotesk", size: 16))
@@ -172,13 +178,19 @@ struct UploadFileModal: View {
             
             Spacer()
             
-            // Close button (right)
-            Button(action: {
-                isPresented = false 
-            }) {
-                Image(systemName: "xmark")
-                    .font(.custom("Overused Grotesk", size: 16))
-                    .foregroundColor(.textPrimary)
+            // Close button (right) - ẩn khi đang upload
+            if uploadStatus != .loading {
+                Button(action: {
+                    isPresented = false 
+                }) {
+                    Image(systemName: "xmark")
+                        .font(.custom("Overused Grotesk", size: 16))
+                        .foregroundColor(.textPrimary)
+                        .frame(width: 28, height: 28)
+                }
+            } else {
+                // Placeholder để giữ layout khi ẩn button
+                Color.clear
                     .frame(width: 28, height: 28)
             }
         }
@@ -280,6 +292,7 @@ struct UploadFileModal: View {
                     .cornerRadius(16)
             }
             .disabled(uploadStatus == .idle || uploadStatus == .loading)
+            .opacity(uploadStatus == .loading ? 0.4 : 1.0)
         }
     }
     

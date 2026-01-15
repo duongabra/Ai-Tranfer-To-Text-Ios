@@ -646,7 +646,8 @@ struct ChatView: View {
                     .cornerRadius(24)
                     .focused($isInputFocused)
                     .lineLimit(1...5)
-                    .disabled(viewModel.isSending)
+                    .disabled(viewModel.isSending || !hasActiveSubscription)
+                    .opacity(hasActiveSubscription ? 1.0 : 0.5)
                 
                 // Send button
                 Button(action: {
@@ -681,7 +682,8 @@ struct ChatView: View {
                         }
                     }
                 }
-                .disabled(!canSendMessage || viewModel.isSending)
+                .disabled(!canSendMessage || viewModel.isSending || !hasActiveSubscription)
+                .opacity((hasActiveSubscription && canSendMessage && !viewModel.isSending) ? 1.0 : 0.5)
             }
             .padding(.horizontal, 16)
             .padding(.top, 16)

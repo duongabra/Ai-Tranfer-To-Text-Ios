@@ -326,15 +326,22 @@ struct ChatView: View {
                                     )
                                     .id(message.id)
                                     
-                                    // Upgrade to Pro card - hiển thị ngay sau tin nhắn đầu tiên của assistant
+                                    // Upgrade to Pro card hoặc File Download card - hiển thị ngay sau tin nhắn đầu tiên của assistant
                                     if let firstAssistant = firstAssistantMessage,
-                                       message.id == firstAssistant.id,
-                                       !hasActiveSubscription {
-                                        UpgradeToProCard(onUpgrade: {
-                                            navigationCoordinator.navigationPath.append(PaywallDestination())
-                                        })
-                                        .padding(.top, 12)
-                                        .id("upgrade-card")
+                                       message.id == firstAssistant.id {
+                                        if hasActiveSubscription {
+                                            // Nếu đã mua gói: hiển thị File Download card
+                                            FileDownloadCard()
+                                                .padding(.top, 12)
+                                                .id("file-download-card")
+                                        } else {
+                                            // Nếu chưa mua gói: hiển thị Upgrade to Pro card
+                                            UpgradeToProCard(onUpgrade: {
+                                                navigationCoordinator.navigationPath.append(PaywallDestination())
+                                            })
+                                            .padding(.top, 12)
+                                            .id("upgrade-card")
+                                        }
                                     }
                                 }
                                 
@@ -1062,6 +1069,81 @@ struct UpgradeToProCard: View {
                 .stroke(Color.primaryOrange.opacity(0.2), lineWidth: 1)
         )
         .cornerRadius(16)
+    }
+}
+
+// MARK: - File Download Card
+
+/// Card hiển thị file download khi đã mua gói Pro
+struct FileDownloadCard: View {
+    // TODO: Sẽ nhận file info từ API sau này
+    @State private var fileName: String = "How I'd become an AI Consultant.txt"
+    
+    var body: some View {
+        let screenWidth = UIScreen.main.bounds.width
+        let horizontalPadding: CGFloat = 16
+        let contentMaxWidth = screenWidth - (horizontalPadding * 2)
+        let botMessageMaxWidth = min(304, contentMaxWidth * 0.85) // 85% của content width, max 304
+        
+        // Align về trái giống assistant message
+        HStack {
+            VStack(alignment: .leading, spacing: 8) {
+                // Title
+                Text("File is ready to download")
+                    .font(.custom("Overused Grotesk", size: 16).weight(.semibold))
+                    .foregroundColor(Color(hex: "#020202"))
+                
+                // File card với icon và download button
+                HStack(alignment: .center, spacing: 8) {
+                        // Icon file
+                    Image("file_icon")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 40, height: 40)
+
+                    // File name và Download button
+                    HStack(alignment: .center, spacing: 8) {
+                        // File name
+                        Text(fileName)
+                            .font(.custom("Overused Grotesk", size: 14).weight(.regular))
+                            .foregroundColor(Color(hex: "#020202"))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        
+                        Spacer()
+                        
+                        // Download button (outline style)
+                        Button(action: {
+                            // TODO: Implement download logic khi API sẵn sàng
+                            print("📥 [FileDownloadCard] Download file: \(fileName)")
+                        }) {
+                            Text("Download")
+                                .font(.custom("Overused Grotesk", size: 13).weight(.semibold))
+                                .foregroundColor(Color(hex: "#020202"))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.white)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .stroke(Color(hex: "#E4E4E4"), lineWidth: 1)
+                                )
+                                .cornerRadius(16)
+                        }
+                    }
+                }
+                .padding(12)
+                .background(Color.white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.black.opacity(0.05), lineWidth: 1)
+                )
+                .cornerRadius(16)
+                .frame(maxWidth: botMessageMaxWidth) // Giới hạn width giống assistant message
+            }
+            .frame(maxWidth: contentMaxWidth, alignment: .leading)
+            
+            Spacer()
+        }
     }
 }
 

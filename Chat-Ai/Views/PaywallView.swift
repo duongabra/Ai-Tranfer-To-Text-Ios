@@ -88,11 +88,14 @@ struct PaywallView: View {
                     
                     // MARK: - Subscription Info Card (chỉ hiển thị khi có subscription)
                     if hasActiveSubscription, let productId = currentProductId, let expirationDate = expirationDate {
+                        // Tìm plan tương ứng để lấy price từ product
+                        let currentPlan = availablePlans.first(where: { $0.id == productId })
                         SubscriptionInfoCard(
                             productId: productId,
                             expirationDate: expirationDate,
                             nextPaymentDate: nextPaymentDate ?? expirationDate,
-                            isCancelled: isSubscriptionCancelled
+                            isCancelled: isSubscriptionCancelled,
+                            planPrice: currentPlan?.price ?? ""
                         )
                         .padding(.horizontal, 16)
                     }
@@ -127,11 +130,11 @@ struct PaywallView: View {
                                 .padding()
                         } else {
                             VStack(spacing: 12) {
-                                // Sắp xếp: yearly lên trước, sau đó monthly
+                                // Sắp xếp: monthly lên trước, sau đó weekly
                                 ForEach(availablePlans.filter { $0.isPremium }.sorted { plan1, plan2 in
-                                    if plan1.type == .yearly { return true }
-                                    if plan2.type == .yearly { return false }
                                     if plan1.type == .monthly { return true }
+                                    if plan2.type == .monthly { return false }
+                                    if plan1.type == .weekly { return true }
                                     return false
                                 }) { plan in
                                     PlanCard(
@@ -313,9 +316,9 @@ struct PaywallView: View {
                     return updatedPlan
                 }
                 
-                // Auto-select cùng loại gói để extend (yearly -> yearly, monthly -> monthly)
+                // Auto-select cùng loại gói để extend (weekly -> weekly, monthly -> monthly)
                 // Cho phép chọn cả gói đang active để extend
-                let currentPlanType = subscriptionInfo.productId.contains("yearly") ? SubscriptionPlan.PlanType.yearly : 
+                let currentPlanType = subscriptionInfo.productId.contains("weekly") ? SubscriptionPlan.PlanType.weekly : 
                                      subscriptionInfo.productId.contains("monthly") ? SubscriptionPlan.PlanType.monthly : nil
                 
                 if let currentPlanType = currentPlanType {
@@ -337,9 +340,9 @@ struct PaywallView: View {
                 
                 print("📱 [PaywallView] No active subscription")
                 
-                // Auto-select Yearly (nếu chưa mua)
-                selectedPlan = availablePlans.first(where: { $0.type == .yearly })
-                print("📱 [PaywallView] Auto-selected: Yearly (no active subscription)")
+                // Auto-select Monthly (nếu chưa mua)
+                selectedPlan = availablePlans.first(where: { $0.type == .monthly })
+                print("📱 [PaywallView] Auto-selected: Monthly (no active subscription)")
             }
             
             isLoading = false
@@ -444,57 +447,25 @@ struct PlanCard: View {
     let isSelected: Bool
     let onTap: () -> Void
     
-    // Yearly plan = gói năm (luôn có background cam nhạt)
-    // Monthly plan = gói tháng (background trắng)
-    private var isYearlyPlan: Bool {
-        return plan.type == .yearly
-    }
-    
-    /// Tính giá tháng từ giá năm (chia cho 12, làm tròn tối đa 1 chữ số thập phân)
-    private func monthlyPriceFromYearly(_ yearlyPrice: String) -> String {
-        // Parse giá năm: loại bỏ ký tự "$" và các ký tự không phải số/chấm
-        let cleanedPrice = yearlyPrice
-            .replacingOccurrences(of: "$", with: "")
-            .replacingOccurrences(of: ",", with: "")
-            .trimmingCharacters(in: .whitespaces)
-        
-        // Convert sang Double
-        guard let yearlyAmount = Double(cleanedPrice) else {
-            return "$0.0"
-        }
-        
-        // Chia cho 12 để ra giá tháng
-        let monthlyAmount = yearlyAmount / 12.0
-        
-        // Làm tròn tối đa 1 chữ số thập phân
-        let roundedAmount = (monthlyAmount * 10).rounded() / 10.0
-        
-        // Format thành string với 1 chữ số thập phân
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = 0
-        formatter.maximumFractionDigits = 1
-        
-        if let formattedString = formatter.string(from: NSNumber(value: roundedAmount)) {
-            return "$\(formattedString)"
-        }
-        
-        return "$\(String(format: "%.1f", roundedAmount))"
+    // Monthly plan = gói tháng (luôn có background cam nhạt - Best value)
+    // Weekly plan = gói tuần (background trắng)
+    private var isMonthlyPlan: Bool {
+        return plan.type == .monthly
     }
     
     var body: some View {
         Button(action: onTap) {
             HStack(alignment: .center, spacing: 8) {
                 VStack(alignment: .leading, spacing: 4) {
-                    // Title row với badge "Best value" cho yearly plan
+                    // Title row với badge "Best value" cho monthly plan
                     HStack(alignment: .center, spacing: 6) {
                         Text(plan.title)
                             .font(.custom("Overused Grotesk", size: 18))
                             .fontWeight(.semibold)
                             .foregroundColor(.textPrimary)
                         
-                        // Badge "30% Off" hoặc "Best value" cho yearly plan
-                        if isYearlyPlan && !plan.isCurrentPlan {
+                        // Badge "30% Off" cho monthly plan (Best value)
+                        if isMonthlyPlan && !plan.isCurrentPlan {
                             HStack(spacing: 4) {
                                 Image("Group_icon")
                                     .resizable()
@@ -516,7 +487,7 @@ struct PlanCard: View {
                     
                     // Description row
                     HStack(alignment: .center, spacing: 6) {
-                        if isYearlyPlan {
+                        if isMonthlyPlan {
                             Text("Best value")
                                 .font(.custom("Overused Grotesk", size: 14))
                                 .fontWeight(.regular)
@@ -532,31 +503,24 @@ struct PlanCard: View {
                                 .fontWeight(.regular)
                                 .foregroundColor(.textTertiary)
                         } else {
-                            // Monthly plan không có description
+                            // Weekly plan không có description
                         }
                     }
                 }
                 
                 Spacer()
                 
-                // Price column
+                // Price column - Lấy giá trực tiếp từ product, không hardcode
                 VStack(alignment: .trailing, spacing: 2) {
-                    if isYearlyPlan {
-                        // Gói năm: Hiển thị "$199 /yr" và giá tháng tính từ giá năm
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("\(plan.price) / yr")
-                                .font(.custom("Overused Grotesk", size: 20))
-                                .fontWeight(.semibold)
-                                .foregroundColor(.primaryOrange)
-                            
-                            Text("\(monthlyPriceFromYearly(plan.price)) / mo")
-                                .font(.custom("Overused Grotesk", size: 14))
-                                .fontWeight(.regular)
-                                .foregroundColor(.textTertiary)
-                        }
-                    } else {
-                        // Gói tháng: Hiển thị "$29 /mo"
+                    if isMonthlyPlan {
+                        // Gói tháng: Hiển thị giá từ product
                         Text("\(plan.price) / mo")
+                            .font(.custom("Overused Grotesk", size: 20))
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primaryOrange)
+                    } else {
+                        // Gói tuần: Hiển thị giá từ product
+                        Text("\(plan.price) / wk")
                             .font(.custom("Overused Grotesk", size: 20))
                             .fontWeight(.semibold)
                             .foregroundColor(.primaryOrange)
@@ -566,9 +530,9 @@ struct PlanCard: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             .background(
-                // Gói năm (weekly) luôn có background cam nhạt
-                // Gói tháng (monthly) background trắng
-                isYearlyPlan
+                // Gói tháng (monthly) luôn có background cam nhạt - Best value
+                // Gói tuần (weekly) background trắng
+                isMonthlyPlan
                     ? Color.primaryOrange.opacity(0.1)
                     : Color.white
             )
@@ -622,10 +586,11 @@ struct SubscriptionInfoCard: View {
     let expirationDate: Date
     let nextPaymentDate: Date
     let isCancelled: Bool
+    let planPrice: String // Lấy từ product, không hardcode
     
     private var planTitle: String {
-        if productId.contains("yearly") {
-            return "Yearly"
+        if productId.contains("weekly") {
+            return "Weekly"
         } else if productId.contains("monthly") {
             return "Monthly"
         } else {
@@ -633,13 +598,18 @@ struct SubscriptionInfoCard: View {
         }
     }
     
-    private var planPrice: String {
-        if productId.contains("yearly") {
-            return "$199 / yr"
-        } else if productId.contains("monthly") {
-            return "$29 / mo"
-        } else {
+    private var planPriceDisplay: String {
+        // Lấy giá từ product, thêm đơn vị dựa trên productId
+        if planPrice.isEmpty {
             return ""
+        }
+        
+        if productId.contains("weekly") {
+            return "\(planPrice) / wk"
+        } else if productId.contains("monthly") {
+            return "\(planPrice) / mo"
+        } else {
+            return planPrice
         }
     }
     
@@ -651,7 +621,7 @@ struct SubscriptionInfoCard: View {
     
     var body: some View {
         VStack(alignment: .center, spacing: 12) {
-            Text("\(planTitle) - \(planPrice)")
+            Text("\(planTitle) - \(planPriceDisplay)")
                 .font(.custom("Overused Grotesk", size: 14))
                 .fontWeight(.semibold)
                 .foregroundColor(.textPrimary)

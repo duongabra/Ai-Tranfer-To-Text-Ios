@@ -102,17 +102,9 @@ struct SubscriptionPlan: Identifiable {
             return product.displayPrice
         }
         
-        // Fallback giá mặc định nếu chưa có package
-        switch type {
-        case .free:
-            return "$0"
-        case .weekly:
-            return "$2.99"
-        case .monthly:
-            return "$29"
-        case .yearly:
-            return "$199"
-        }
+        // Fallback: Không hardcode giá, để về empty string để buộc phải lấy từ product
+        // Giá sẽ được lấy từ StoreKit Configuration hoặc RevenueCat Dashboard
+        return ""
     }
     
     /// Duration hiển thị

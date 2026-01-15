@@ -22,7 +22,7 @@ actor StoreKitService {
     func getAvailablePlans() async throws -> [SubscriptionPlan] {
         // Load products từ StoreKit Configuration
         let productIds = [
-            "com.whales.freechat.yearly",
+            "com.whales.freechat.weekly",
             "com.whales.freechat.monthly"
         ]
         
@@ -35,21 +35,15 @@ actor StoreKitService {
         
         // Convert StoreKit Products thành SubscriptionPlan
         for product in products {
-            if product.id == "com.whales.freechat.yearly" {
+            if product.id == "com.whales.freechat.weekly" {
                 let plan = SubscriptionPlan(
-                    type: .yearly,
+                    type: .weekly,
                     storeKitProduct: product
                 )
                 plans.append(plan)
             } else if product.id == "com.whales.freechat.monthly" {
                 let plan = SubscriptionPlan(
                     type: .monthly,
-                    storeKitProduct: product
-                )
-                plans.append(plan)
-            } else if product.id == "com.whales.freechat.weekly" {
-                let plan = SubscriptionPlan(
-                    type: .weekly,
                     storeKitProduct: product
                 )
                 plans.append(plan)

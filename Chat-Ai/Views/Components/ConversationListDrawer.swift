@@ -41,9 +41,10 @@ struct ConversationListDrawer: View {
             }
         }
         .task(id: isPresented) {
-            // Refresh conversations khi drawer được mở (nếu cần)
-            if isPresented && viewModel.conversations.isEmpty {
-                await viewModel.loadConversations()
+            // ✅ Fetch lại conversations mỗi lần drawer được mở để có data mới nhất
+            if isPresented {
+                print("🔄 [ConversationListDrawer] Drawer opened, refreshing conversations...")
+                await viewModel.loadConversations(forceRefresh: true)
             }
             
             // Đảm bảo load user info từ DB khi drawer mở

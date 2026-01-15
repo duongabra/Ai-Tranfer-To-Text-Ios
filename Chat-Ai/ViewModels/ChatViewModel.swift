@@ -175,35 +175,38 @@ class ChatViewModel: ObservableObject {
                 
                 let userId = 8042467986 // Fixed user_id for transcribe API
                 
-                let transcription = try await TranscribeService.shared.transcribeAudio(
+                let result = try await TranscribeService.shared.transcribeAudio(
                     audioData: data,
                     fileName: fileName,
                     userId: userId
                 )
                 
+                print("🎵 [ChatViewModel] Transcription result:")
+                print("   - Transcription URL (S3): \(result.transcriptionURL)")
+                print("   - Message text length: \(result.message.count) characters")
                 
                 isTranscribing = false
                 transcriptionProgress = nil
                 
-                // ✅ Tạo message với transcription text - role là assistant vì đây là AI trả lời
+                // ✅ Tạo message với message text và lưu transcription URL để download sau
                 print("🎵 [ChatViewModel] Tạo transcription message cho audio")
                 print("🎵 [ChatViewModel] Role: assistant")
-                print("🎵 [ChatViewModel] Content length: \(transcription.count)")
+                print("🎵 [ChatViewModel] Content length: \(result.message.count)")
+                print("🎵 [ChatViewModel] Transcription URL (S3): \(result.transcriptionURL)")
                 
-                let transcriptionMessage = Message(
-                    conversationId: conversation.id,
-                    role: .assistant,
-                    content: transcription
-                )
+                // Lưu transcription URL vào fileUrl để user có thể download sau
+                let transcriptionFileName = "transcript_\(Date().timeIntervalSince1970).txt"
                 
-                print("🎵 [ChatViewModel] Transcription message created với role: \(transcriptionMessage.role.rawValue)")
-                
-                // Lưu vào Supabase
+                // Lưu vào Supabase với transcription URL
                 print("🎵 [ChatViewModel] Đang lưu transcription message vào DB với role: assistant")
                 let savedMessage = try await SupabaseService.shared.createMessage(
                     conversationId: conversation.id,
                     role: .assistant,
-                    content: transcriptionMessage.content
+                    content: result.message,  // Dùng message text để hiển thị
+                    fileUrl: result.transcriptionURL,  // Lưu S3 URL để download
+                    fileName: transcriptionFileName,
+                    fileType: "other",  // Transcription file là text file
+                    fileSize: nil
                 )
                 
                 print("🎵 [ChatViewModel] Transcription message đã lưu vào DB")
@@ -223,35 +226,37 @@ class ChatViewModel: ObservableObject {
                 
                 let userId = 8042467986 // Fixed user_id for transcribe API
                 
-                
-                let transcription = try await TranscribeService.shared.transcribeVideoURL(
+                let result = try await TranscribeService.shared.transcribeVideoURL(
                     videoURL: fileURL,
                     userId: userId
                 )
                 
+                print("🎥 [ChatViewModel] Transcription result:")
+                print("   - Transcription URL (S3): \(result.transcriptionURL)")
+                print("   - Message text length: \(result.message.count) characters")
                 
                 isTranscribing = false
                 transcriptionProgress = nil
                 
-                // ✅ Tạo message với transcription text - role là assistant vì đây là AI trả lời
+                // ✅ Tạo message với message text và lưu transcription URL để download sau
                 print("🎥 [ChatViewModel] Tạo transcription message cho video")
                 print("🎥 [ChatViewModel] Role: assistant")
-                print("🎥 [ChatViewModel] Content length: \(transcription.count)")
+                print("🎥 [ChatViewModel] Content length: \(result.message.count)")
+                print("🎥 [ChatViewModel] Transcription URL (S3): \(result.transcriptionURL)")
                 
-                let transcriptionMessage = Message(
-                    conversationId: conversation.id,
-                    role: .assistant,
-                    content: transcription
-                )
+                // Lưu transcription URL vào fileUrl để user có thể download sau
+                let transcriptionFileName = "transcript_\(Date().timeIntervalSince1970).txt"
                 
-                print("🎥 [ChatViewModel] Transcription message created với role: \(transcriptionMessage.role.rawValue)")
-                
-                // Lưu vào Supabase
+                // Lưu vào Supabase với transcription URL
                 print("🎥 [ChatViewModel] Đang lưu transcription message vào DB với role: assistant")
                 let savedMessage = try await SupabaseService.shared.createMessage(
                     conversationId: conversation.id,
                     role: .assistant,
-                    content: transcriptionMessage.content
+                    content: result.message,  // Dùng message text để hiển thị
+                    fileUrl: result.transcriptionURL,  // Lưu S3 URL để download
+                    fileName: transcriptionFileName,
+                    fileType: "other",  // Transcription file là text file
+                    fileSize: nil
                 )
                 
                 print("🎥 [ChatViewModel] Transcription message đã lưu vào DB")

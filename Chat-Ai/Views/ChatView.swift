@@ -7,6 +7,7 @@
 
 import SwiftUI
 import AVFoundation
+import UIKit
 
 struct ChatView: View {
     
@@ -330,10 +331,23 @@ struct ChatView: View {
                                     if let firstAssistant = firstAssistantMessage,
                                        message.id == firstAssistant.id {
                                         if hasActiveSubscription {
-                                            // Nếu đã mua gói: hiển thị File Download card
-                                            FileDownloadCard()
+                                            // Nếu đã mua gói: hiển thị File Download card (chỉ khi có transcription file)
+                                            // Transcription file được lưu với fileType = "other" và fileUrl = S3 URL
+                                            if message.fileType == "other", let fileUrl = message.fileUrl, !fileUrl.isEmpty {
+                                                FileDownloadCard(
+                                                    fileUrl: fileUrl,
+                                                    fileName: message.fileName ?? "transcript.txt"
+                                                )
                                                 .padding(.top, 12)
                                                 .id("file-download-card")
+                                                .onAppear {
+                                                    // Log khi card được hiển thị
+                                                    print("✅ [ChatView] Showing FileDownloadCard")
+                                                    print("   - Message ID: \(message.id)")
+                                                    print("   - S3 URL: \(fileUrl)")
+                                                    print("   - File Name: \(message.fileName ?? "transcript.txt")")
+                                                }
+                                            }
                                         } else {
                                             // Nếu chưa mua gói: hiển thị Upgrade to Pro card
                                             UpgradeToProCard(onUpgrade: {
@@ -874,10 +888,11 @@ struct MessageBubble: View {
                     // Message content container
                     VStack(alignment: .leading, spacing: 8) {
                         // File attachment (nếu có) - chỉ hiển thị nếu không phải file đầu tiên của user (đã hiển thị ở card riêng trên cùng)
-                        if let attachment = message.attachment {
-                            if !isFirstUserFile {
-                                FileAttachmentView(attachment: attachment)
-                            }
+                        // KHÔNG hiển thị transcription file (fileType == "other") vì đã có FileDownloadCard
+                        if let attachment = message.attachment,
+                           attachment.type != .other,  // Bỏ qua transcription file
+                           !isFirstUserFile {
+                            FileAttachmentView(attachment: attachment)
                         }
                         
                         // Nội dung message (phần dịch text từ file)
@@ -918,10 +933,11 @@ struct MessageBubble: View {
                     // Message content container
                     VStack(alignment: .trailing, spacing: 8) {
                         // File attachment (nếu có) - chỉ hiển thị nếu không phải file đầu tiên của user (đã hiển thị ở card riêng trên cùng)
-                        if let attachment = message.attachment {
-                            if !isFirstUserFile {
-                                FileAttachmentView(attachment: attachment)
-                            }
+                        // KHÔNG hiển thị transcription file (fileType == "other") vì đã có FileDownloadCard
+                        if let attachment = message.attachment,
+                           attachment.type != .other,  // Bỏ qua transcription file
+                           !isFirstUserFile {
+                            FileAttachmentView(attachment: attachment)
                         }
                         
                         // Nội dung message
@@ -1076,8 +1092,9 @@ struct UpgradeToProCard: View {
 
 /// Card hiển thị file download khi đã mua gói Pro
 struct FileDownloadCard: View {
-    // TODO: Sẽ nhận file info từ API sau này
-    @State private var fileName: String = "How I'd become an AI Consultant.txt"
+    let fileUrl: String
+    let fileName: String
+    @State private var isDownloading = false
     
     var body: some View {
         let screenWidth = UIScreen.main.bounds.width
@@ -1114,21 +1131,27 @@ struct FileDownloadCard: View {
                         
                         // Download button (outline style)
                         Button(action: {
-                            // TODO: Implement download logic khi API sẵn sàng
-                            print("📥 [FileDownloadCard] Download file: \(fileName)")
+                            downloadFile()
                         }) {
-                            Text("Download")
-                                .font(.custom("Overused Grotesk", size: 13).weight(.semibold))
-                                .foregroundColor(Color(hex: "#020202"))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(Color.white)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 16)
-                                        .stroke(Color(hex: "#E4E4E4"), lineWidth: 1)
-                                )
-                                .cornerRadius(16)
+                            if isDownloading {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: Color(hex: "#020202")))
+                                    .frame(width: 16, height: 16)
+                            } else {
+                                Text("Download")
+                                    .font(.custom("Overused Grotesk", size: 13).weight(.semibold))
+                                    .foregroundColor(Color(hex: "#020202"))
+                            }
                         }
+                        .disabled(isDownloading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color(hex: "#E4E4E4"), lineWidth: 1)
+                        )
+                        .cornerRadius(16)
                     }
                 }
                 .padding(12)
@@ -1143,6 +1166,83 @@ struct FileDownloadCard: View {
             .frame(maxWidth: contentMaxWidth, alignment: .leading)
             
             Spacer()
+        }
+    }
+    
+    /// Download transcription file từ URL và save vào Files app
+    private func downloadFile() {
+        print("📥 [FileDownloadCard] Starting download transcription file...")
+        print("   - URL: \(fileUrl)")
+        print("   - File name: \(fileName)")
+        
+        guard let url = URL(string: fileUrl) else {
+            print("❌ [FileDownloadCard] Invalid URL: \(fileUrl)")
+            return
+        }
+        
+        isDownloading = true
+        
+        Task {
+            do {
+                // Download file data
+                let (data, response) = try await URLSession.shared.data(from: url)
+                
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    print("❌ [FileDownloadCard] Invalid HTTP response")
+                    await MainActor.run {
+                        isDownloading = false
+                    }
+                    return
+                }
+                
+                guard (200...299).contains(httpResponse.statusCode) else {
+                    print("❌ [FileDownloadCard] Failed to download file: HTTP \(httpResponse.statusCode)")
+                    await MainActor.run {
+                        isDownloading = false
+                    }
+                    return
+                }
+                
+                // Save file vào temporary directory
+                let tempDir = FileManager.default.temporaryDirectory
+                let tempFile = tempDir.appendingPathComponent(fileName)
+                
+                try data.write(to: tempFile)
+                print("✅ [FileDownloadCard] File downloaded to temp: \(tempFile.path)")
+                
+                // Share file để user có thể save vào Files app
+                await MainActor.run {
+                    isDownloading = false
+                    
+                    let activityVC = UIActivityViewController(
+                        activityItems: [tempFile],
+                        applicationActivities: nil
+                    )
+                    
+                    // Set up cho iPad
+                    if let popover = activityVC.popoverPresentationController {
+                        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                           let rootViewController = windowScene.windows.first?.rootViewController {
+                            popover.sourceView = rootViewController.view
+                            popover.sourceRect = CGRect(x: UIScreen.main.bounds.width / 2, y: UIScreen.main.bounds.height / 2, width: 0, height: 0)
+                            popover.permittedArrowDirections = []
+                        }
+                    }
+                    
+                    // Present activity view controller
+                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                       let rootViewController = windowScene.windows.first?.rootViewController {
+                        rootViewController.present(activityVC, animated: true)
+                    }
+                }
+                
+                print("✅ [FileDownloadCard] File download completed")
+            } catch {
+                print("❌ [FileDownloadCard] Failed to download file: \(error.localizedDescription)")
+                await MainActor.run {
+                    isDownloading = false
+                }
+            }
         }
     }
 }

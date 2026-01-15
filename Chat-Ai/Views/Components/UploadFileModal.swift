@@ -590,11 +590,11 @@ struct UploadFileModal: View {
                     
                     // Gọi TranscribeService
                     let userId = 8042467986 // Fixed user_id for transcribe API
-                    let transcription: String
+                    let result: TranscribeResult
                     
                     if file.type == .audio {
                         // Transcribe audio
-                        transcription = try await TranscribeService.shared.transcribeAudio(
+                        result = try await TranscribeService.shared.transcribeAudio(
                             audioData: data,
                             fileName: file.name,
                             userId: userId
@@ -602,13 +602,17 @@ struct UploadFileModal: View {
                     } else {
                         // Transcribe video (sử dụng file URL)
                         let transcribeStartTime = Date()
-                        transcription = try await TranscribeService.shared.transcribeVideoURL(
+                        result = try await TranscribeService.shared.transcribeVideoURL(
                             videoURL: fileURL,
                             userId: userId
                         )
                         let transcribeElapsed = Date().timeIntervalSince(transcribeStartTime)
+                        print("📹 [UploadFileModal] Video transcription took \(String(format: "%.2f", transcribeElapsed)) seconds")
                     }
                     
+                    print("📝 [UploadFileModal] Transcription result:")
+                    print("   - Transcription URL (S3): \(result.transcriptionURL)")
+                    print("   - Message text length: \(result.message.count) characters")
                     
                     // Bước 3: Tạo conversation mới với title = fileName (không có extension)
                     let conversationTitle = (file.name as NSString).deletingPathExtension
@@ -627,14 +631,22 @@ struct UploadFileModal: View {
                         fileSize: data.count
                     )
                     
-                    // Bước 5: Tạo assistant message với transcription text
+                    // Bước 5: Tạo assistant message với message text và lưu transcription URL để download sau
                     print("📝 [UploadFileModal] Tạo assistant message với transcription text")
                     print("📝 [UploadFileModal] Role: assistant")
-                    print("📝 [UploadFileModal] Content length: \(transcription.count)")
+                    print("📝 [UploadFileModal] Content length: \(result.message.count)")
+                    print("📝 [UploadFileModal] Transcription URL (S3): \(result.transcriptionURL)")
+                    
+                    // Lưu transcription URL vào fileUrl để user có thể download sau
+                    let transcriptionFileName = "transcript_\(Date().timeIntervalSince1970).txt"
                     let transcriptionMessage = try await SupabaseService.shared.createMessage(
                         conversationId: newConversation.id,
                         role: .assistant, // ✅ Transcription text là assistant message
-                        content: transcription
+                        content: result.message,  // Dùng message text để hiển thị
+                        fileUrl: result.transcriptionURL,  // Lưu S3 URL để download
+                        fileName: transcriptionFileName,
+                        fileType: "other",  // Transcription file là text file
+                        fileSize: nil
                     )
                     print("📝 [UploadFileModal] Transcription message đã lưu với role: \(transcriptionMessage.role.rawValue)")
                     

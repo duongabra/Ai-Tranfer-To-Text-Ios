@@ -241,7 +241,16 @@ actor SupabaseService {
         
         print("📥 [SupabaseService] Đã fetch \(messages.count) messages từ DB")
         for (index, message) in messages.enumerated() {
-            print("📥 [SupabaseService] Message \(index): role=\(message.role.rawValue), id=\(message.id), content=\(message.content.prefix(50))...")
+            print("📥 [SupabaseService] Message \(index):")
+            print("   - Role: \(message.role.rawValue)")
+            print("   - ID: \(message.id)")
+            print("   - Content: \(message.content.prefix(50))...")
+            print("   - File URL: \(message.fileUrl ?? "nil")")
+            print("   - File Name: \(message.fileName ?? "nil")")
+            print("   - File Type: \(message.fileType ?? "nil")")
+            if message.fileType == "other" {
+                print("   ✅ This is a transcription file (fileType=other)")
+            }
         }
         
         return messages

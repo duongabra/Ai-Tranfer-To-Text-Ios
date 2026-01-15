@@ -28,10 +28,13 @@ class ConversationListViewModel: ObservableObject {
     }
     
     /// Load tất cả conversations từ database
-    func loadConversations() async {
-        // ✅ Skip nếu đang loading (tránh gọi nhiều lần)
-        guard !isLoading else {
-            return
+    /// - Parameter forceRefresh: Nếu true, sẽ force reload ngay cả khi đang loading (dùng khi drawer mở)
+    func loadConversations(forceRefresh: Bool = false) async {
+        // ✅ Skip nếu đang loading (trừ khi forceRefresh = true)
+        if !forceRefresh {
+            guard !isLoading else {
+                return
+            }
         }
         
         // ✅ Cancel previous task nếu đang chạy

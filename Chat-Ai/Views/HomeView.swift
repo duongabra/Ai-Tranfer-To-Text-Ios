@@ -30,8 +30,79 @@ struct HomeView: View {
     @State private var showingSettings = false
     
     var body: some View {
-        NavigationStack(path: $navigationCoordinator.navigationPath) {
-            ZStack(alignment: .bottom) {
+        Group {
+            if #available(iOS 16.0, *) {
+                navigationStackView
+            } else {
+                navigationViewCompat
+            }
+        }
+    }
+    
+    @available(iOS 16.0, *)
+    private var navigationStackView: some View {
+        NavigationStack(path: navigationCoordinator.navigationPathBinding) {
+            mainContent
+                .navigationDestination(for: PaywallDestination.self) { _ in
+                    PaywallView()
+                        .onDisappear {
+                            Task {
+                                try? await Task.sleep(nanoseconds: 500_000_000)
+                                await checkSubscriptionStatus()
+                            }
+                        }
+                }
+                .navigationDestination(for: Conversation.self) { conversation in
+                    ChatView(conversation: conversation)
+                        .environmentObject(navigationCoordinator)
+                }
+        }
+    }
+    
+    private var navigationViewCompat: some View {
+        NavigationView {
+            mainContent
+                .background(
+                    NavigationLink(
+                        destination: destinationView,
+                        isActive: Binding(
+                            get: { navigationCoordinator.currentDestination != nil },
+                            set: { if !$0 { navigationCoordinator.currentDestination = nil } }
+                        )
+                    ) {
+                        EmptyView()
+                    }
+                )
+        }
+        .navigationViewStyle(StackNavigationViewStyle())
+        .sheet(isPresented: $navigationCoordinator.showingPaywall) {
+            PaywallView()
+                .onDisappear {
+                    Task {
+                        try? await Task.sleep(nanoseconds: 500_000_000)
+                        await checkSubscriptionStatus()
+                    }
+                }
+        }
+    }
+    
+    @ViewBuilder
+    private var destinationView: some View {
+        if let destination = navigationCoordinator.currentDestination {
+            switch destination {
+            case .conversation(let conversation):
+                ChatView(conversation: conversation)
+                    .environmentObject(navigationCoordinator)
+            case .paywall:
+                PaywallView()
+            }
+        } else {
+            EmptyView()
+        }
+    }
+    
+    private var mainContent: some View {
+        ZStack(alignment: .bottom) {
             // Background - màu trắng #FFF
             Color.white
                 .ignoresSafeArea()
@@ -68,31 +139,29 @@ struct HomeView: View {
                     .frame(maxWidth: .infinity)
             }
             .ignoresSafeArea(edges: .bottom)
-            }
-            .task {
+        }
+        .task {
+            await checkSubscriptionStatus()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            // Refresh subscription status khi app quay lại foreground
+            Task {
                 await checkSubscriptionStatus()
             }
-            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-                // Refresh subscription status khi app quay lại foreground
-                Task {
-                    await checkSubscriptionStatus()
-                }
-            }
-            .navigationDestination(for: PaywallDestination.self) { _ in
-                PaywallView()
-                    .onDisappear {
-                        // Refresh subscription status sau khi đóng PaywallView
-                        // Thêm delay nhỏ để RevenueCat sync lại customer info
-                        Task {
-                            // Đợi 500ms để RevenueCat sync lại data
-                            try? await Task.sleep(nanoseconds: 500_000_000)
-                            await checkSubscriptionStatus()
+        }
+        .overlay {
+            // Background blur overlay khi mở Upload File Modal
+            if showingUploadModal {
+                ZStack(alignment: .bottom) {
+                    // Blur background
+                    Color.black.opacity(0.3)
+                        .ignoresSafeArea()
+                        .background(.ultraThinMaterial)
+                        .onTapGesture {
+                            // Không làm gì - chặn tap để đóng modal
                         }
-                    }
-            }
-            .overlay(alignment: .bottom) {
-                // Upload File Modal
-                if showingUploadModal {
+                    
+                    // Upload File Modal
                     UploadFileModal(
                         isPresented: $showingUploadModal,
                         selectedFile: $selectedFile,
@@ -105,9 +174,21 @@ struct HomeView: View {
                     .transition(.move(edge: .bottom))
                     .zIndex(1000)
                 }
-                
-                // Paste Link Modal
-                if showingPasteLinkModal {
+            }
+        }
+        .overlay {
+            // Background blur overlay khi mở Paste Link Modal
+            if showingPasteLinkModal {
+                ZStack(alignment: .bottom) {
+                    // Blur background
+                    Color.black.opacity(0.3)
+                        .ignoresSafeArea()
+                        .background(.ultraThinMaterial)
+                        .onTapGesture {
+                            // Không làm gì - chặn tap để đóng modal
+                        }
+                    
+                    // Paste Link Modal
                     PasteLinkModal(
                         isPresented: $showingPasteLinkModal,
                         onTranscribeSuccess: { conversation in
@@ -119,10 +200,7 @@ struct HomeView: View {
                     .zIndex(1000)
                 }
             }
-            .navigationDestination(for: Conversation.self) { conversation in
-                ChatView(conversation: conversation)
-                    .environmentObject(navigationCoordinator)
-            }
+        }
             .overlay(alignment: .leading) {
                 // Conversation List Drawer
                 ConversationListDrawer(
@@ -149,8 +227,7 @@ struct HomeView: View {
                         .zIndex(1000)
                 }
             }
-        }
-        .sheet(isPresented: $showingImageVideoPicker) {
+            .sheet(isPresented: $showingImageVideoPicker) {
             FilePicker(
                 selectedFile: $selectedFile,
                 selectedData: $selectedFileData,
@@ -195,7 +272,7 @@ struct HomeView: View {
             
             // Subscription Badge - Clickable
             Button(action: {
-                navigationCoordinator.navigationPath.append(PaywallDestination())
+                navigationCoordinator.navigateToPaywall()
             }) {
                 SubscriptionBadge(isPro: hasActiveSubscription)
             }

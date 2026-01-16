@@ -173,22 +173,20 @@ struct ChatView: View {
             
             // Title ở giữa
             Text("Summary Video")
-                .font(.custom("Overused Grotesk", size: 16))
-                .fontWeight(.semibold)
+                .font(Font.custom("Overused Grotesk", size: 16).weight(.semibold))
                 .foregroundColor(.textPrimary)
                 .frame(maxWidth: .infinity)
                 .multilineTextAlignment(.center)
             
             // Subscription Badge - luôn navigate đến PaywallView (giống HomeView)
             Button(action: {
-                navigationCoordinator.navigationPath.append(PaywallDestination())
+                navigationCoordinator.navigateToPaywall()
             }) {
                 if hasActiveSubscription {
                     // Pro Badge - Crown trắng trên nền cam
                     HStack(spacing: 4) {
                         Text("Pro")
-                            .font(.custom("Overused Grotesk", size: 14))
-                            .fontWeight(.semibold)
+                            .font(Font.custom("Overused Grotesk", size: 14).weight(.semibold))
                             .foregroundColor(.white)
                         
                         Image("VIP_2_fill")
@@ -204,8 +202,7 @@ struct ChatView: View {
                     // Upgrade Badge - Crown cam trên nền trắng
                     HStack(spacing: 4) {
                         Text("Upgrade")
-                            .font(.custom("Overused Grotesk", size: 14))
-                            .fontWeight(.semibold)
+                            .font(Font.custom("Overused Grotesk", size: 14).weight(.semibold))
                             .foregroundColor(.primaryOrange)
                         
                         Image(systemName: "crown.fill")
@@ -351,7 +348,7 @@ struct ChatView: View {
                                         } else {
                                             // Nếu chưa mua gói: hiển thị Upgrade to Pro card
                                             UpgradeToProCard(onUpgrade: {
-                                                navigationCoordinator.navigationPath.append(PaywallDestination())
+                                                navigationCoordinator.navigateToPaywall()
                                             })
                                             .padding(.top, 12)
                                             .id("upgrade-card")
@@ -400,7 +397,7 @@ struct ChatView: View {
                     // Update liên tục khi scroll để detect chính xác hơn
                     handleScrollPositionChange(value)
                 }
-                .onChange(of: viewModel.messages.count) { _, _ in
+                .onChange(of: viewModel.messages.count) { newCount in
                     if let lastMessage = viewModel.messages.last {
                         withAnimation {
                             proxy.scrollTo(lastMessage.id, anchor: .bottom)
@@ -415,7 +412,7 @@ struct ChatView: View {
                         await checkSubscriptionStatus()
                     }
                 }
-                .onChange(of: viewModel.isSending) { _, isSending in
+                .onChange(of: viewModel.isSending) { isSending in
                     if isSending {
                         withAnimation {
                             proxy.scrollTo("typing", anchor: .bottom)
@@ -580,8 +577,7 @@ struct ChatView: View {
                 .foregroundColor(.textTertiary)
             
             Text("Start conversation")
-                .font(.custom("Overused Grotesk", size: 18))
-                .fontWeight(.semibold)
+                .font(Font.custom("Overused Grotesk", size: 18).weight(.semibold))
                 .foregroundColor(.textPrimary)
             
             Text("Send your first message to chat with AI")
@@ -653,20 +649,27 @@ struct ChatView: View {
             // Input container với background màu cam
             HStack(alignment: .bottom, spacing: 8) {
                 // Input field
-                TextField("Ask anything about video ...", text: $viewModel.inputText, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(.custom("Overused Grotesk", size: 14))
-                    .foregroundColor(.textPrimary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color.white)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 24)
-                            .stroke(Color(hex: "F4F4F4"), lineWidth: 1)
-                    )
-                    .cornerRadius(24)
-                    .focused($isInputFocused)
-                    .lineLimit(1...5)
+                Group {
+                    if #available(iOS 16.0, *) {
+                        TextField("Ask anything about video ...", text: $viewModel.inputText, axis: .vertical)
+                            .lineLimit(1...5)
+                    } else {
+                        TextField("Ask anything about video ...", text: $viewModel.inputText)
+                            .lineLimit(5)
+                    }
+                }
+                .textFieldStyle(.plain)
+                .font(.custom("Overused Grotesk", size: 14))
+                .foregroundColor(.textPrimary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24)
+                        .stroke(Color(hex: "F4F4F4"), lineWidth: 1)
+                )
+                .cornerRadius(24)
+                .focused($isInputFocused)
                     .disabled(viewModel.isSending || !hasActiveSubscription)
                     .opacity(hasActiveSubscription ? 1.0 : 0.5)
                 
@@ -697,8 +700,7 @@ struct ChatView: View {
                                 .scaleEffect(0.8)
                         } else {
                             Image(systemName: "arrow.up")
-                                .font(.custom("Overused Grotesk", size: 14))
-                                .fontWeight(.semibold)
+                                .font(Font.custom("Overused Grotesk", size: 14).weight(.semibold))
                                 .foregroundColor(.white)
                         }
                     }
@@ -812,8 +814,7 @@ struct VideoUploadedCard: View {
             // Content
             VStack(alignment: .leading, spacing: 2) {
                 Text(attachment.name)
-                    .font(.custom("Overused Grotesk", size: 13))
-                    .fontWeight(.semibold)
+                    .font(Font.custom("Overused Grotesk", size: 13).weight(.semibold))
                     .foregroundColor(.textPrimary)
                     .lineLimit(1)
                 
@@ -851,7 +852,13 @@ struct VideoUploadedCard: View {
         
         Task {
             do {
-                let cgImage = try await imageGenerator.image(at: time).image
+                let cgImage: CGImage
+                if #available(iOS 16.0, *) {
+                    cgImage = try await imageGenerator.image(at: time).image
+                } else {
+                    // iOS 15: dùng synchronous method
+                    cgImage = try imageGenerator.copyCGImage(at: time, actualTime: nil)
+                }
                 let uiImage = UIImage(cgImage: cgImage)
                 
                 await MainActor.run {
@@ -998,36 +1005,49 @@ struct RenameConversationSheet: View {
     }
     
     var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField("Conversation name", text: $newTitle)
-                } header: {
-                    Text("Rename")
-                } footer: {
-                    Text("Enter a new name for this conversation.")
+        Group {
+            if #available(iOS 16.0, *) {
+                NavigationStack {
+                    formContent
+                }
+            } else {
+                NavigationView {
+                    formContent
+                }
+                .navigationViewStyle(StackNavigationViewStyle())
+            }
+        }
+    }
+    
+    private var formContent: some View {
+        Form {
+            Section {
+                TextField("Conversation name", text: $newTitle)
+            } header: {
+                Text("Rename")
+            } footer: {
+                Text("Enter a new name for this conversation.")
+            }
+        }
+        .navigationTitle("Rename")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            // Nút Cancel
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button("Cancel") {
+                    dismiss()
                 }
             }
-            .navigationTitle("Rename")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                // Nút Cancel
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
+            
+            // Nút Save
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Save") {
+                    Task {
+                        await viewModel.renameConversation(newTitle: newTitle)
                         dismiss()
                     }
                 }
-                
-                // Nút Save
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save") {
-                        Task {
-                            await viewModel.renameConversation(newTitle: newTitle)
-                            dismiss()
-                        }
-                    }
-                    .disabled(newTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
+                .disabled(newTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
     }
@@ -1259,11 +1279,23 @@ struct BottomMarkerPreferenceKey: PreferenceKey {
 // MARK: - Preview
 
 #Preview {
-    NavigationStack {
-        ChatView(conversation: Conversation(
-            userId: UUID(),
-            title: "Test Chat"
-        ))
+    Group {
+        if #available(iOS 16.0, *) {
+            NavigationStack {
+                ChatView(conversation: Conversation(
+                    userId: UUID(),
+                    title: "Test Chat"
+                ))
+            }
+        } else {
+            NavigationView {
+                ChatView(conversation: Conversation(
+                    userId: UUID(),
+                    title: "Test Chat"
+                ))
+            }
+            .navigationViewStyle(StackNavigationViewStyle())
+        }
     }
 }
 

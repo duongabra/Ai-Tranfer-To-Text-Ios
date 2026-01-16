@@ -27,8 +27,7 @@ struct UploadIcon: View {
                 
                 // Arrow up
                 Image(systemName: "arrow.up")
-                    .font(.custom("Overused Grotesk", size: size * 0.28))
-                    .fontWeight(.bold)
+                    .font(Font.custom("Overused Grotesk", size: size * 0.28).weight(.bold))
                     .foregroundColor(.textWhite)
             }
         }

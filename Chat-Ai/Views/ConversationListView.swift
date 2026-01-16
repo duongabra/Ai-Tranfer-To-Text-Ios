@@ -25,105 +25,118 @@ struct ConversationListView: View {
     @State private var showingClearAllConfirmation = false
     
     var body: some View {
-        // NavigationStack: cho phép navigate giữa các màn hình
-        NavigationStack {
-            ZStack {
-                // Nếu đang loading, hiển thị loading indicator
-                if viewModel.isLoading {
-                    ProgressView("Loading...")
+        // NavigationStack/NavigationView: cho phép navigate giữa các màn hình
+        Group {
+            if #available(iOS 16.0, *) {
+                NavigationStack {
+                    contentView
                 }
-                // Nếu danh sách rỗng và không loading
-                else if viewModel.conversations.isEmpty {
-                    emptyStateView
+            } else {
+                NavigationView {
+                    contentView
                 }
-                // Hiển thị danh sách conversations
-                else {
-                    conversationListView
+                .navigationViewStyle(StackNavigationViewStyle())
+            }
+        }
+    }
+    
+    private var contentView: some View {
+        ZStack {
+            // Nếu đang loading, hiển thị loading indicator
+            if viewModel.isLoading {
+                ProgressView("Loading...")
+            }
+            // Nếu danh sách rỗng và không loading
+            else if viewModel.conversations.isEmpty {
+                emptyStateView
+            }
+            // Hiển thị danh sách conversations
+            else {
+                conversationListView
+            }
+        }
+        .navigationTitle("Chat AI")
+        .toolbar {
+            // Nút Sign Out ở góc trái
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: {
+                    Task {
+                        await authViewModel.signOut()
+                    }
+                }) {
+                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                        .foregroundColor(.red)
                 }
             }
-            .navigationTitle("Chat AI")
-            .toolbar {
-                // Nút Sign Out ở góc trái
-                ToolbarItem(placement: .navigationBarLeading) {
+            
+            // Nút Clear All (chỉ hiện khi có conversations)
+            ToolbarItem(placement: .navigationBarLeading) {
+                if !viewModel.conversations.isEmpty {
                     Button(action: {
-                        Task {
-                            await authViewModel.signOut()
-                        }
+                        showingClearAllConfirmation = true
                     }) {
-                        Image(systemName: "rectangle.portrait.and.arrow.right")
+                        Image(systemName: "trash")
                             .foregroundColor(.red)
                     }
                 }
-                
-                // Nút Clear All (chỉ hiện khi có conversations)
-                ToolbarItem(placement: .navigationBarLeading) {
-                    if !viewModel.conversations.isEmpty {
-                        Button(action: {
-                            showingClearAllConfirmation = true
-                        }) {
-                            Image(systemName: "trash")
-                                .foregroundColor(.red)
-                        }
+            }
+            
+            // Nút Upgrade to Premium
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: {
+                    showingPaywall = true
+                }) {
+                    HStack {
+                        Image(systemName: "crown.fill")
+                        Text("Premium")
                     }
-                }
-                
-                // Nút Upgrade to Premium
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        showingPaywall = true
-                    }) {
-                        HStack {
-                            Image(systemName: "crown.fill")
-                            Text("Premium")
-                        }
-                        .foregroundColor(.yellow)
-                    }
-                }
-                
-                // Nút "+" ở góc phải để tạo conversation mới
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        showingNewConversationSheet = true
-                    }) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.custom("Overused Grotesk", size: 22))
-                    }
+                    .foregroundColor(.yellow)
                 }
             }
-            // Sheet để tạo conversation mới
-            .sheet(isPresented: $showingNewConversationSheet) {
-                NewConversationSheet(viewModel: viewModel)
-            }
-            // Sheet để hiển thị paywall
-            .sheet(isPresented: $showingPaywall) {
-                PaywallView()
-            }
-            // Alert hiển thị lỗi (nếu có)
-            .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
-                Button("OK") {
-                    viewModel.errorMessage = nil
-                }
-            } message: {
-                if let errorMessage = viewModel.errorMessage {
-                    Text(errorMessage)
+            
+            // Nút "+" ở góc phải để tạo conversation mới
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: {
+                    showingNewConversationSheet = true
+                }) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.custom("Overused Grotesk", size: 22))
                 }
             }
-            // Confirmation dialog xóa tất cả
-            .confirmationDialog("Delete all conversations?", isPresented: $showingClearAllConfirmation, titleVisibility: .visible) {
-                Button("Delete All", role: .destructive) {
-                    Task {
-                        await viewModel.clearAllConversations()
-                    }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This action cannot be undone. All conversations and messages will be permanently deleted.")
+        }
+        // Sheet để tạo conversation mới
+        .sheet(isPresented: $showingNewConversationSheet) {
+            NewConversationSheet(viewModel: viewModel)
+        }
+        // Sheet để hiển thị paywall
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView()
+        }
+        // Alert hiển thị lỗi (nếu có)
+        .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
+            Button("OK") {
+                viewModel.errorMessage = nil
             }
-            // Refresh conversations khi view xuất hiện (nếu cần)
-            .task {
-                if viewModel.conversations.isEmpty {
-                    await viewModel.loadConversations()
+        } message: {
+            if let errorMessage = viewModel.errorMessage {
+                Text(errorMessage)
+            }
+        }
+        // Confirmation dialog xóa tất cả
+        .confirmationDialog("Delete all conversations?", isPresented: $showingClearAllConfirmation, titleVisibility: .visible) {
+            Button("Delete All", role: .destructive) {
+                Task {
+                    await viewModel.clearAllConversations()
                 }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This action cannot be undone. All conversations and messages will be permanently deleted.")
+        }
+        // Refresh conversations khi view xuất hiện (nếu cần)
+        .task {
+            if viewModel.conversations.isEmpty {
+                await viewModel.loadConversations()
             }
         }
     }
@@ -159,9 +172,7 @@ struct ConversationListView: View {
                 .foregroundColor(.gray)
             
             Text("No conversations yet")
-                .font(.custom("Overused Grotesk", size: 22))
-                .fontWeight(.semibold)
-                .fontWeight(.semibold)
+                .font(Font.custom("Overused Grotesk", size: 22).weight(.semibold))
             
             Text("Tap + to start chatting with AI")
                 .font(.custom("Overused Grotesk", size: 17))
@@ -223,33 +234,46 @@ struct NewConversationSheet: View {
     @State private var title = ""
     
     var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField("Conversation title", text: $title)
-                } header: {
-                    Text("Info")
-                } footer: {
-                    Text("Example: Learn Swift, Ask about programming, etc.")
+        Group {
+            if #available(iOS 16.0, *) {
+                NavigationStack {
+                    formContent
+                }
+            } else {
+                NavigationView {
+                    formContent
+                }
+                .navigationViewStyle(StackNavigationViewStyle())
+            }
+        }
+    }
+    
+    private var formContent: some View {
+        Form {
+            Section {
+                TextField("Conversation title", text: $title)
+            } header: {
+                Text("Info")
+            } footer: {
+                Text("Example: Learn Swift, Ask about programming, etc.")
+            }
+        }
+        .navigationTitle("New Conversation")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            // Nút Cancel
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button("Cancel") {
+                    dismiss()
                 }
             }
-            .navigationTitle("New Conversation")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                // Nút Cancel
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
+            
+            // Nút Tạo
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Create") {
+                    Task {
+                        await viewModel.createConversation(title: title.isEmpty ? "New Conversation" : title)
                         dismiss()
-                    }
-                }
-                
-                // Nút Tạo
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Create") {
-                        Task {
-                            await viewModel.createConversation(title: title.isEmpty ? "New Conversation" : title)
-                            dismiss()
-                        }
                     }
                 }
             }

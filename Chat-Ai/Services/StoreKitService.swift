@@ -26,7 +26,20 @@ actor StoreKitService {
             "com.whales.freechat.monthly"
         ]
         
+        print("🛒 [StoreKitService] Loading products for IDs: \(productIds)")
+        
         let products = try await Product.products(for: productIds)
+        
+        print("🛒 [StoreKitService] Loaded \(products.count) products:")
+        for product in products {
+            print("   - \(product.id): \(product.displayName) - \(product.displayPrice)")
+        }
+        
+        // Nếu không có products, throw error để PaywallView có thể handle
+        if products.isEmpty {
+            print("⚠️ [StoreKitService] No products found! Check App Store Connect configuration.")
+            throw StoreKitError.productsNotFound
+        }
         
         var plans: [SubscriptionPlan] = []
         
@@ -223,6 +236,7 @@ enum StoreKitError: Error, LocalizedError {
     case purchasePending
     case unknown
     case cannotCancelInApp
+    case productsNotFound
     
     var errorDescription: String? {
         switch self {
@@ -234,6 +248,8 @@ enum StoreKitError: Error, LocalizedError {
             return "Unknown error occurred"
         case .cannotCancelInApp:
             return "Please cancel subscription in Settings"
+        case .productsNotFound:
+            return "Subscription products not found. Please check App Store Connect configuration."
         }
     }
 }

@@ -109,15 +109,13 @@ struct ConversationListDrawer: View {
                     ZStack(alignment: .leading) {
                         if searchText.isEmpty {
                             Text("Search")
-                                .font(.custom("Overused Grotesk", size: 14))
+                                .font(Font.custom("Overused Grotesk", size: 14).weight(.regular))
                                 .foregroundColor(Color(hex: "#717171")) // placeholder color
-                                .fontWeight(.regular)
                                 .lineSpacing(6) // (20-14) from design
                         }
                         TextField("", text: $searchText)
-                            .font(.custom("Overused Grotesk", size: 14))
+                            .font(Font.custom("Overused Grotesk", size: 14).weight(.regular))
                             .foregroundColor(.textPrimary)
-                            .fontWeight(.regular)
                             .lineSpacing(6) // (20-14)
                             .focused($isSearchFocused)
                     }
@@ -153,8 +151,7 @@ struct ConversationListDrawer: View {
     private var historyTitle: some View {
         HStack {
             Text("History")
-                .font(.custom("Overused Grotesk", size: 14))
-                .fontWeight(.semibold)
+                .font(Font.custom("Overused Grotesk", size: 14).weight(.semibold))
                 .foregroundColor(Color(hex: "#020202"))
                 .lineLimit(1)
             
@@ -244,8 +241,7 @@ struct ConversationListDrawer: View {
                 // User name - max 10 characters
                 UserDisplayNameText()
                     .environmentObject(authViewModel)
-                    .font(.custom("Overused Grotesk", size: 16))
-                    .fontWeight(.semibold)
+                    .font(Font.custom("Overused Grotesk", size: 16).weight(.semibold))
                     .foregroundColor(.textPrimary)
                     .lineLimit(1)
                 
@@ -294,17 +290,15 @@ struct ConversationListItem: View {
             // Content
             VStack(alignment: .leading, spacing: 4) {
                 Text(conversation.title)
-                    .font(.custom("Overused Grotesk", size: 14))
-                    .fontWeight(.regular)
+                    .font(Font.custom("Overused Grotesk", size: 14).weight(.regular))
                     .foregroundColor(Color(hex: "#020202"))
                     .lineLimit(1)
                 
                 HStack(spacing: 4) {
                     // File type
                     Text(fileTypeText)
-                        .font(.custom("Overused Grotesk", size: 12))
+                        .font(Font.custom("Overused Grotesk", size: 12).weight(.regular))
                         .foregroundColor(Color(hex: "#717171"))
-                        .fontWeight(.regular)
                     
                     // Dot separator
                     Circle()
@@ -313,9 +307,8 @@ struct ConversationListItem: View {
                     
                     // Time
                     Text(formatTime(conversation.updatedAt))
-                        .font(.custom("Overused Grotesk", size: 12))
+                        .font(Font.custom("Overused Grotesk", size: 12).weight(.regular))
                         .foregroundColor(Color(hex: "#717171"))
-                        .fontWeight(.regular)
                 }
             }
             
@@ -461,7 +454,13 @@ struct ConversationListItem: View {
         
         Task {
             do {
-                let cgImage = try await imageGenerator.image(at: time).image
+                let cgImage: CGImage
+                if #available(iOS 16.0, *) {
+                    cgImage = try await imageGenerator.image(at: time).image
+                } else {
+                    // iOS 15: dùng synchronous method
+                    cgImage = try imageGenerator.copyCGImage(at: time, actualTime: nil)
+                }
                 let uiImage = UIImage(cgImage: cgImage)
                 
                 await MainActor.run {

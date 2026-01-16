@@ -32,21 +32,17 @@ struct LoginView: View {
                     // Text Section
                     VStack(spacing: 12) {
                         Text("Analyze your video / audio")
-                            .font(.custom("Overused Grotesk", size: 28))
-                            .fontWeight(.semibold)
+                            .font(Font.custom("Overused Grotesk", size: 28).weight(.semibold))
                             .lineSpacing(36 - 28)
-                            .fontDesign(.default) // Mimic font-family-sans
                             .foregroundColor(Color(red: 2/255, green: 2/255, blue: 2/255))
                             .multilineTextAlignment(.center)
                             .environment(\.font, .system(.body, design: .default).lowercaseSmallCaps().monospacedDigit())
                         
                         Text("AI summaries and insights from any content")
-                            .font(.custom("Overused Grotesk", size: 16))
-                            .fontWeight(.regular)
+                            .font(Font.custom("Overused Grotesk", size: 16).weight(.regular))
                             .foregroundColor(Color(red: 48/255, green: 48/255, blue: 48/255))
                             .multilineTextAlignment(.center)
                             .lineSpacing(24 - 16)
-                            .fontDesign(.default)
                             .environment(\.font, .system(.body, design: .default).monospacedDigit())
                     }
                     .padding(.horizontal, 16)

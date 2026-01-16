@@ -100,6 +100,104 @@ struct PaywallView: View {
                         .padding(.horizontal, 16)
                     }
                     
+                    // MARK: - Subscription Details & Terms (Required by Apple) - Moved to top
+                    if !hasActiveSubscription {
+                        VStack(spacing: 12) {
+                            // Subscription details card
+                            if let plan = selectedPlan ?? availablePlans.first(where: { $0.type == .monthly }) {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Subscription Details")
+                                        .font(Font.custom("Overused Grotesk", size: 14).weight(.semibold))
+                                        .foregroundColor(.textPrimary)
+                                    
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        HStack(spacing: 8) {
+                                            Text("Title:")
+                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.regular))
+                                                .foregroundColor(.textTertiary)
+                                                .frame(width: 60, alignment: .leading)
+                                            Text(plan.title)
+                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.medium))
+                                                .foregroundColor(.textPrimary)
+                                        }
+                                        
+                                        HStack(spacing: 8) {
+                                            Text("Length:")
+                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.regular))
+                                                .foregroundColor(.textTertiary)
+                                                .frame(width: 60, alignment: .leading)
+                                            Text(plan.duration)
+                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.medium))
+                                                .foregroundColor(.textPrimary)
+                                        }
+                                        
+                                        HStack(spacing: 8) {
+                                            Text("Price:")
+                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.regular))
+                                                .foregroundColor(.textTertiary)
+                                                .frame(width: 60, alignment: .leading)
+                                            Text(plan.price)
+                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.medium))
+                                                .foregroundColor(.textPrimary)
+                                        }
+                                        
+                                        HStack(spacing: 8) {
+                                            Text("Type:")
+                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.regular))
+                                                .foregroundColor(.textTertiary)
+                                                .frame(width: 60, alignment: .leading)
+                                            Text("Auto-renewable subscription")
+                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.medium))
+                                                .foregroundColor(.textPrimary)
+                                        }
+                                    }
+                                }
+                                .padding(16)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.white)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color(hex: "E4E4E4"), lineWidth: 1)
+                                )
+                                .cornerRadius(12)
+                                .padding(.horizontal, 16)
+                            }
+                            
+                            // Terms and Privacy Policy
+                            HStack(spacing: 4) {
+                                Text("By subscribing, you agree to our")
+                                    .font(Font.custom("Overused Grotesk", size: 11).weight(.regular))
+                                    .foregroundColor(.textTertiary)
+                                
+                                Button(action: {
+                                    openURL("https://quick-vid-read.lovable.app/terms")
+                                }) {
+                                    Text("Terms of Service")
+                                        .font(Font.custom("Overused Grotesk", size: 11).weight(.regular))
+                                        .foregroundColor(.primaryOrange)
+                                        .underline()
+                                }
+                                
+                                Text("and")
+                                    .font(Font.custom("Overused Grotesk", size: 11).weight(.regular))
+                                    .foregroundColor(.textTertiary)
+                                
+                                Button(action: {
+                                    openURL("https://quick-vid-read.lovable.app/privacy")
+                                }) {
+                                    Text("Privacy Policy")
+                                        .font(Font.custom("Overused Grotesk", size: 11).weight(.regular))
+                                        .foregroundColor(.primaryOrange)
+                                        .underline()
+                                }
+                            }
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 16)
+                        }
+                        .padding(.top, 8)
+                        .padding(.bottom, 8)
+                    }
+                    
                     // MARK: - Features (chỉ hiển thị khi chưa có subscription)
                     if !hasActiveSubscription {
                         VStack(spacing: 8) {
@@ -238,14 +336,13 @@ struct PaywallView: View {
                             .padding(.horizontal, 0)
                     }
                     
-                    // MARK: - Terms & Policy
+                    // MARK: - Terms & Policy (Bottom links)
                     HStack(spacing: 8) {
                         Button(action: {
-                            // TODO: Open Terms & Conditions
+                            openURL("https://quick-vid-read.lovable.app/terms")
                         }) {
                             Text("Terms & Conditions")
-                                .font(.custom("Overused Grotesk", size: 13))
-                                .fontWeight(.regular)
+                                .font(Font.custom("Overused Grotesk", size: 13).weight(.regular))
                                 .foregroundColor(.textTertiary)
                         }
                         
@@ -254,11 +351,10 @@ struct PaywallView: View {
                             .frame(width: 1, height: 12)
                         
                         Button(action: {
-                            // TODO: Open Privacy Policy
+                            openURL("https://quick-vid-read.lovable.app/privacy")
                         }) {
                             Text("Privacy Policy")
-                                .font(.custom("Overused Grotesk", size: 13))
-                                .fontWeight(.regular)
+                                .font(Font.custom("Overused Grotesk", size: 13).weight(.regular))
                                 .foregroundColor(.textTertiary)
                         }
                     }
@@ -269,9 +365,10 @@ struct PaywallView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .manageSubscriptionsSheet(isPresented: $showManageSubscriptions)
-        .onChange(of: showManageSubscriptions) { oldValue, newValue in
+        .onChange(of: showManageSubscriptions) { newValue in
             // Khi manage subscriptions sheet đóng (từ true -> false), reload subscription status
-            if oldValue == true && newValue == false {
+            // Dùng state để track giá trị cũ
+            if !newValue && showManageSubscriptions {
                 Task {
                     await loadPlans()
                 }
@@ -279,6 +376,26 @@ struct PaywallView: View {
         }
         .task {
             await loadPlans()
+        }
+        .onAppear {
+            // Ensure plans are loaded when view appears
+            if availablePlans.isEmpty {
+                Task {
+                    await loadPlans()
+                }
+            }
+        }
+    }
+    
+    // MARK: - Open URL
+    
+    private func openURL(_ urlString: String) {
+        guard let url = URL(string: urlString) else { return }
+        // Mở trong Safari với options để đảm bảo link hoạt động
+        UIApplication.shared.open(url, options: [.universalLinksOnly: false]) { success in
+            if !success {
+                print("❌ [PaywallView] Failed to open URL: \(urlString)")
+            }
         }
     }
     
@@ -347,8 +464,15 @@ struct PaywallView: View {
             
             isLoading = false
         } catch {
-            errorMessage = "Failed to load plans: \(error.localizedDescription)"
+            let errorDesc = error.localizedDescription
+            errorMessage = "Failed to load plans: \(errorDesc)"
+            print("❌ [PaywallView] Error loading plans: \(error)")
             isLoading = false
+            
+            // Nếu không có products, hiển thị message rõ ràng hơn
+            if let storeKitError = error as? StoreKitError, storeKitError == .productsNotFound {
+                errorMessage = "Subscription products are not available. Please check your internet connection and try again."
+            }
         }
     }
     
@@ -437,7 +561,6 @@ struct PaywallView: View {
             isLoading = false
         }
     }
-    
 }
 
 // MARK: - Plan Card

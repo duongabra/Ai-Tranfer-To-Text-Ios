@@ -31,51 +31,52 @@ struct UploadFileModal: View {
     @State private var showingUnifiedPicker = false
     @State private var uploadStatus: UploadStatus = .idle
     @State private var uploadedFileURL: String? = nil
-    @State private var isUploaded: Bool = false // Flag để track xem đã upload thành công chưa
-    @State private var previousFileId: String? = nil // Track file cũ để phát hiện file mới
-    @State private var toastMessage: String? = nil // Toast message để hiển thị lỗi
+    @State private var toastMessage: String? = nil
     
     // Giới hạn file size: 300MB
     private let maxFileSize: Int64 = 300 * 1024 * 1024
     
     var body: some View {
-        if isPresented {
-            modalContent
-                .onAppear {
-                    // Reset flag khi modal được mở
-                    if !isUploaded {
-                        uploadStatus = .idle
-                        isUploaded = false
-                    }
+        ZStack(alignment: .top) {
+            // Main content
+            VStack(spacing: 0) {
+                // Header
+                headerView
+                
+                // Content
+                VStack(spacing: 12) {
+                    statusContentView
+                    summarizeButton
                 }
-        } else {
-            // Reset khi modal đóng
-            Color.clear
-                .onAppear {
-                    uploadStatus = .idle
-                    isUploaded = false
-                    uploadedFileURL = nil
-                }
-        }
-    }
-    
-    // MARK: - Modal Content
-    
-    private var modalContent: some View {
-        ZStack(alignment: .bottom) {
-            backgroundBlur
-            modalBody
-        }
-        .ignoresSafeArea(edges: .bottom)
-        .transition(.opacity)
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isPresented)
-        .overlay(alignment: .top) {
-            // Toast message - đặt ở top với zIndex cao để không bị che
+                .padding(.top, 8)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 32)
+            }
+            .background(Color(hex: "FAFAFA"))
+            
+            // Toast message
             if let toast = toastMessage {
                 toastView(message: toast)
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .animation(.spring(response: 0.3, dampingFraction: 0.8), value: toastMessage)
                     .zIndex(9999)
+                    .padding(.top, 16)
+            }
+        }
+        .interactiveDismissDisabled(isUploading)
+        .onAppear {
+            // Reset khi sheet được mở
+            if uploadStatus != .loading && uploadStatus != .success {
+                uploadStatus = .idle
+            }
+        }
+        .onDisappear {
+            // Reset khi sheet đóng (trừ khi đang navigate)
+            if uploadStatus != .success {
+                uploadStatus = .idle
+                uploadedFileURL = nil
+                selectedFile = nil
+                selectedFileData = nil
             }
         }
         .sheet(isPresented: $showingUnifiedPicker) {
@@ -85,83 +86,28 @@ struct UploadFileModal: View {
             )
         }
         .onChange(of: selectedFile) { newFile in
-            // Tạo ID để so sánh file (dùng name + url)
-            let newFileId = newFile.map { "\($0.name)-\($0.url)" }
-            
-            // So sánh với file cũ TRƯỚC khi cập nhật previousFileId
-            let isNewFile: Bool
-            if let newFileId = newFileId, let previousId = previousFileId {
-                isNewFile = newFileId != previousId
-            } else {
-                isNewFile = newFile != nil // Nếu không có previousId, coi như file mới
-            }
-            
-            // Nếu chọn file mới (khác file cũ), clear file cũ và reset state
-            if isNewFile {
-                // File mới được chọn từ edit button, clear state cũ
-                uploadStatus = .idle
-                uploadedFileURL = nil
-                isUploaded = false
-                // Note: selectedFileData sẽ được cập nhật tự động từ UnifiedMediaPicker
-            }
-            
-            // Cập nhật previousFileId SAU khi đã xử lý
-            previousFileId = newFileId
-            
-            // Nếu đã upload thành công và không phải file mới, không xử lý onChange
-            if isUploaded && !isNewFile {
-                return
-            }
-            
-            // Nếu đang ở success state và không phải file mới, không xử lý onChange
-            if case .success = uploadStatus, !isNewFile {
-                return
-            }
-            
-            handleFileSelection(newFile)
+            handleFileChange(newFile)
         }
         .onChange(of: selectedFileData) { newData in
-            // Khi selectedFileData thay đổi, đảm bảo preview được cập nhật
-            // Nếu có file và data mới, validate lại
-            if let file = selectedFile, let data = newData {
-                // Luôn validate file khi có data mới (bao gồm cả file quá lớn)
-                validateAndSetFile(file: file, data: data)
-            }
+            handleDataChange(newData)
         }
     }
     
-    private var backgroundBlur: some View {
-        Color.white.opacity(0.3)
-            .ignoresSafeArea(edges: .all)
-            .background(.ultraThinMaterial)
-            .onTapGesture {
-                // Không cho đóng modal khi đang upload hoặc đang loading
-                if uploadStatus != .loading {
-                    isPresented = false
-                }
-            }
+    // MARK: - Computed Properties
+    
+    private var isUploading: Bool {
+        if case .loading = uploadStatus {
+            return true
+        }
+        return false
     }
     
-    private var modalBody: some View {
-        VStack(spacing: 0) {
-            headerView
-            contentView
-        }
-        .background(Color(hex: "FAFAFA"))
-        .cornerRadius(16, corners: [.topLeft, .topRight])
-        .shadow(color: Color.black.opacity(0.1), radius: 32, x: 0, y: 0)
-        .transition(.move(edge: .bottom))
-    }
+    // MARK: - Header View
     
     private var headerView: some View {
         HStack {
-            // Close button (left) - invisible placeholder để căn giữa title
-            Button(action: {
-                // Không cho đóng khi đang upload
-                if uploadStatus != .loading {
-                    isPresented = false
-                }
-            }) {
+            // Invisible placeholder để căn giữa title
+            Button(action: {}) {
                 Image(systemName: "xmark")
                     .font(.custom("Overused Grotesk", size: 16))
                     .foregroundColor(.clear)
@@ -178,10 +124,10 @@ struct UploadFileModal: View {
             
             Spacer()
             
-            // Close button (right) - ẩn khi đang upload
+            // Close button
             if uploadStatus != .loading {
                 Button(action: {
-                    isPresented = false 
+                    isPresented = false
                 }) {
                     Image(systemName: "xmark")
                         .font(.custom("Overused Grotesk", size: 16))
@@ -189,7 +135,6 @@ struct UploadFileModal: View {
                         .frame(width: 28, height: 28)
                 }
             } else {
-                // Placeholder để giữ layout khi ẩn button
                 Color.clear
                     .frame(width: 28, height: 28)
             }
@@ -198,21 +143,12 @@ struct UploadFileModal: View {
         .padding(.vertical, 16)
     }
     
-    private var contentView: some View {
-        VStack(spacing: 12) {
-            statusContentView
-            summarizeButton
-        }
-        .padding(.top, 8)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 32)
-    }
+    // MARK: - Status Content View
     
     @ViewBuilder
     private var statusContentView: some View {
-        // Container chung với dashed border cho tất cả states
         ZStack(alignment: .topTrailing) {
-            // Content - căn giữa
+            // Content
             Group {
                 switch uploadStatus {
                 case .idle:
@@ -229,11 +165,9 @@ struct UploadFileModal: View {
             }
             .frame(maxWidth: .infinity)
             
-            // Edit button hiển thị ở preview và success state, ở góc trên cùng bên phải của container
+            // Edit button
             if (uploadStatus == .preview || uploadStatus == .success), selectedFile != nil {
                 Button(action: {
-                    // Chỉ mở file picker, không clear state ngay
-                    // File cũ sẽ được clear khi chọn file mới
                     showingUnifiedPicker = true
                 }) {
                     Image("edit_button")
@@ -251,18 +185,18 @@ struct UploadFileModal: View {
         .background(Color.primaryOrange.opacity(0.05))
         .overlay(
             RoundedRectangle(cornerRadius: 16)
-                .stroke(Color(hex: "#D87757"), style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
+                .stroke(Color.primaryOrange, lineWidth: 1)
         )
         .cornerRadius(16)
     }
+    
+    // MARK: - Summarize Button
     
     @ViewBuilder
     private var summarizeButton: some View {
         switch uploadStatus {
         case .failed:
-            // Try Again button cho failed state
             Button(action: {
-                // Reset và cho phép chọn lại file
                 uploadStatus = .idle
                 selectedFile = nil
                 selectedFileData = nil
@@ -278,7 +212,6 @@ struct UploadFileModal: View {
                     .cornerRadius(16)
             }
         default:
-            // Sumarize button cho các state khác
             Button(action: {
                 handleSummarize()
             }) {
@@ -302,29 +235,10 @@ struct UploadFileModal: View {
             : Color.primaryOrange
     }
     
-    // MARK: - Helpers
+    // MARK: - State Views
     
-    private func handleFileSelection(_ newFile: FileAttachment?) {
-        // Nếu đang ở success state và file có URL (đã upload), không reset về preview
-        if case .success = uploadStatus, let file = newFile, !file.url.isEmpty {
-            // File đã upload thành công, giữ nguyên success state
-            return
-        }
-        
-        if let file = newFile, let data = selectedFileData {
-            validateAndSetFile(file: file, data: data)
-        } else {
-            uploadStatus = .idle
-            uploadedFileURL = nil
-        }
-    }
-    
-    // MARK: - Views
-    
-    /// Upload area view (idle state) - State 1
     private var uploadAreaView: some View {
         VStack(spacing: 16) {
-            // Icon
             ZStack {
                 Circle()
                     .fill(Color.primaryOrange)
@@ -336,7 +250,6 @@ struct UploadFileModal: View {
                     .frame(width: 48, height: 48)
             }
             
-            // Title
             VStack(spacing: 4) {
                 Text("Upload Audio or Video")
                     .font(Font.custom("Overused Grotesk", size: 16).weight(.bold))
@@ -344,7 +257,6 @@ struct UploadFileModal: View {
                     .multilineTextAlignment(.center)
                     .lineSpacing(24 - 16)
                 
-                // File formats and size
                 HStack(spacing: 8) {
                     Text("MP3, WAV, MP4, MOV")
                         .font(.custom("Overused Grotesk", size: 13))
@@ -370,20 +282,14 @@ struct UploadFileModal: View {
         }
     }
     
-    /// Preview content (State 2) - chỉ nội dung bên trong, căn giữa
     private var previewContent: some View {
         VStack(spacing: 16) {
-            // File preview - thumbnail nhỏ 85x48
             if let file = selectedFile, let data = selectedFileData {
-                // Preview từ data local - thumbnail nhỏ như success state
-                // Dùng .id() để force refresh khi file hoặc data thay đổi
                 LocalFilePreviewView(file: file, data: data)
-                    .id("\(file.name)-\(data.count)") // Unique ID để force refresh
                     .frame(width: 85, height: 48)
                     .cornerRadius(4)
                     .clipped()
                 
-                // File info - căn giữa
                 VStack(alignment: .center, spacing: 4) {
                     Text(formatFileName(file.name))
                         .font(.custom("Overused Grotesk", size: 16).weight(.bold))
@@ -400,16 +306,13 @@ struct UploadFileModal: View {
         }
     }
     
-    /// Loading content (State 3) - chỉ nội dung bên trong
     private var loadingContent: some View {
         VStack(spacing: 16) {
-            // Spinner icon (48x48)
             ProgressView()
                 .progressViewStyle(CircularProgressViewStyle(tint: Color.primaryOrange))
                 .scaleEffect(1.5)
                 .frame(width: 48, height: 48)
             
-            // Text
             VStack(spacing: 4) {
                 Text("Uploading...")
                     .font(.custom("Overused Grotesk", size: 16).weight(.bold))
@@ -427,19 +330,15 @@ struct UploadFileModal: View {
         }
     }
     
-    /// Success content (State 4) - chỉ nội dung bên trong, căn giữa
     private var successContent: some View {
         VStack(spacing: 16) {
-            // File preview và info
             if let file = selectedFile {
                 VStack(spacing: 16) {
-                    // Preview thumbnail (85x48)
                     RemoteFilePreviewView(file: file)
                         .frame(width: 85, height: 48)
                         .cornerRadius(4)
                         .clipped()
                     
-                    // File info (căn giữa)
                     VStack(alignment: .center, spacing: 4) {
                         Text(formatFileName(file.name))
                             .font(.custom("Overused Grotesk", size: 16).weight(.bold))
@@ -459,18 +358,13 @@ struct UploadFileModal: View {
         }
     }
     
-    /// Failed content - chỉ nội dung bên trong
     private func failedContent(errorMessage: String) -> some View {
         VStack(spacing: 16) {
-            // Error icon (48x48 với màu #FF3D33)
-            ZStack {
-                Image("error_icon")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 48, height: 48)
-            }
+            Image("error_icon")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 48, height: 48)
             
-            // Error text
             VStack(spacing: 4) {
                 Text("Upload Failed")
                     .font(.custom("Overused Grotesk", size: 16).weight(.bold))
@@ -488,7 +382,6 @@ struct UploadFileModal: View {
     
     // MARK: - Toast View
     
-    /// Toast message hiển thị lỗi
     private func toastView(message: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle.fill")
@@ -518,49 +411,61 @@ struct UploadFileModal: View {
         .padding(.top, 16)
     }
     
-    // MARK: - Helpers
+    // MARK: - Handlers
     
-    /// Validate file size và set status
-    private func validateAndSetFile(file: FileAttachment, data: Data) {
-        // Nếu file đã có URL (đã upload), không reset về preview
-        if !file.url.isEmpty && file.url.hasPrefix("http") {
-            // File đã upload, giữ nguyên success state nếu đang ở success
-            if case .success = uploadStatus {
-                return
-            }
+    private func handleFileChange(_ newFile: FileAttachment?) {
+        // Nếu đang ở success hoặc loading, không xử lý
+        if case .success = uploadStatus { return }
+        if case .loading = uploadStatus { return }
+        
+        // Nếu file đã có URL (đã upload), không xử lý
+        if let file = newFile, !file.url.isEmpty, file.url.hasPrefix("http") {
+            return
         }
         
+        // Validate file
+        if let file = newFile, let data = selectedFileData {
+            validateAndSetFile(file: file, data: data)
+        } else {
+            uploadStatus = .idle
+            uploadedFileURL = nil
+        }
+    }
+    
+    private func handleDataChange(_ newData: Data?) {
+        // Nếu đang ở success hoặc loading, không xử lý
+        if case .success = uploadStatus { return }
+        if case .loading = uploadStatus { return }
+        
+        // Validate file
+        if let file = selectedFile, let data = newData {
+            validateAndSetFile(file: file, data: data)
+        }
+    }
+    
+    private func validateAndSetFile(file: FileAttachment, data: Data) {
         let fileSize = Int64(data.count)
         
         if fileSize > maxFileSize {
-            // Hiển thị toast error
             toastMessage = "File size exceeds 300MB limit"
-            // Auto dismiss toast sau 3 giây
             Task {
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 await MainActor.run {
                     toastMessage = nil
                 }
             }
-            // Reset về idle state
             uploadStatus = .idle
             selectedFile = nil
             selectedFileData = nil
         } else {
-            // File hợp lệ, hiển thị preview (chưa upload)
-            // Chỉ set preview nếu chưa ở success state
-            if case .success = uploadStatus {
-                return
-            }
             uploadStatus = .preview
         }
     }
     
-    /// Upload file và chuyển sang success state
     private func handleSummarize() {
         guard let file = selectedFile, let data = selectedFileData else { return }
         
-        // Validate lại file size
+        // Validate file size
         let fileSize = Int64(data.count)
         if fileSize > maxFileSize {
             uploadStatus = .failed("File size exceeds 300MB limit")
@@ -572,7 +477,7 @@ struct UploadFileModal: View {
         
         Task {
             do {
-                // Bước 1: Upload file lên Supabase Storage với maxSize 300MB
+                // Upload file
                 let fileURL = try await StorageService.shared.uploadFile(
                     data: data,
                     fileName: file.name,
@@ -580,48 +485,36 @@ struct UploadFileModal: View {
                     customMaxSize: Int(maxFileSize)
                 )
                 
+                uploadedFileURL = fileURL
                 
-                // Bước 2: Nếu là video hoặc audio → Transcribe
+                // Nếu là video hoặc audio → Transcribe
                 if file.type == .video || file.type == .audio {
                     await MainActor.run {
                         uploadStatus = .loading
                     }
                     
-                    
-                    // Gọi TranscribeService
-                    let userId = 8042467986 // Fixed user_id for transcribe API
+                    let userId = 8042467986
                     let result: TranscribeResult
                     
                     if file.type == .audio {
-                        // Transcribe audio
                         result = try await TranscribeService.shared.transcribeAudio(
                             audioData: data,
                             fileName: file.name,
                             userId: userId
                         )
                     } else {
-                        // Transcribe video (sử dụng file URL)
-                        let transcribeStartTime = Date()
                         result = try await TranscribeService.shared.transcribeVideoURL(
                             videoURL: fileURL,
                             userId: userId
                         )
-                        let transcribeElapsed = Date().timeIntervalSince(transcribeStartTime)
-                        print("📹 [UploadFileModal] Video transcription took \(String(format: "%.2f", transcribeElapsed)) seconds")
                     }
                     
-                    print("📝 [UploadFileModal] Transcription result:")
-                    print("   - Transcription URL (S3): \(result.transcriptionURL)")
-                    print("   - Message text length: \(result.message.count) characters")
-                    
-                    // Bước 3: Tạo conversation mới với title = fileName (không có extension)
+                    // Tạo conversation
                     let conversationTitle = (file.name as NSString).deletingPathExtension
                     let newConversation = try await SupabaseService.shared.createConversation(title: conversationTitle)
                     
-                    
-                    // Bước 4: Tạo user message với file attachment
-                    print("📎 [UploadFileModal] Tạo user message với file attachment")
-                    let userMessage = try await SupabaseService.shared.createMessage(
+                    // Tạo user message
+                    _ = try await SupabaseService.shared.createMessage(
                         conversationId: newConversation.id,
                         role: .user,
                         content: "📎 Sent a file",
@@ -631,66 +524,38 @@ struct UploadFileModal: View {
                         fileSize: data.count
                     )
                     
-                    // Bước 5: Tạo assistant message với message text và lưu transcription URL để download sau
-                    print("📝 [UploadFileModal] Tạo assistant message với transcription text")
-                    print("📝 [UploadFileModal] Role: assistant")
-                    print("📝 [UploadFileModal] Content length: \(result.message.count)")
-                    print("📝 [UploadFileModal] Transcription URL (S3): \(result.transcriptionURL)")
-                    
-                    // Lưu transcription URL vào fileUrl để user có thể download sau
+                    // Tạo assistant message với transcription
                     let transcriptionFileName = "transcript_\(Date().timeIntervalSince1970).txt"
-                    let transcriptionMessage = try await SupabaseService.shared.createMessage(
+                    _ = try await SupabaseService.shared.createMessage(
                         conversationId: newConversation.id,
-                        role: .assistant, // ✅ Transcription text là assistant message
-                        content: result.message,  // Dùng message text để hiển thị
-                        fileUrl: result.transcriptionURL,  // Lưu S3 URL để download
+                        role: .assistant,
+                        content: result.message,
+                        fileUrl: result.transcriptionURL,
                         fileName: transcriptionFileName,
-                        fileType: "other",  // Transcription file là text file
+                        fileType: "other",
                         fileSize: nil
                     )
-                    print("📝 [UploadFileModal] Transcription message đã lưu với role: \(transcriptionMessage.role.rawValue)")
                     
-                    
-                    // Bước 6: Cập nhật timestamp của conversation
+                    // Cập nhật timestamp
                     try await SupabaseService.shared.updateConversationTimestamp(conversationId: newConversation.id)
                     
-                    // Bước 6: Navigate đến ChatView
+                    // Success và navigate
                     await MainActor.run {
                         uploadStatus = .success
-                        isUploaded = true
-                        uploadedFileURL = fileURL
                         
-                        // Cập nhật selectedFile với URL mới
-                        selectedFile = FileAttachment(
-                            url: fileURL,
-                            name: file.name,
-                            type: file.type,
-                            size: file.size
-                        )
-                        
-                        // Đóng modal
-                        isPresented = false
-                        
-                        // Call callback để navigate đến ChatView
-                        onTranscribeSuccess?(newConversation)
+                        // Đợi một chút để user thấy success state
+                        Task {
+                            try? await Task.sleep(nanoseconds: 500_000_000)
+                            await MainActor.run {
+                                isPresented = false
+                                onTranscribeSuccess?(newConversation)
+                            }
+                        }
                     }
                 } else {
                     // Không phải video/audio → chỉ upload và hiển thị success
                     await MainActor.run {
-                        uploadedFileURL = fileURL
-                        
-                        // Set flag và success status TRƯỚC khi cập nhật selectedFile
-                        // để tránh onChange trigger và reset về preview
-                        isUploaded = true
                         uploadStatus = .success
-                        
-                        // Cập nhật selectedFile với URL mới sau khi đã set success
-                        selectedFile = FileAttachment(
-                            url: fileURL,
-                            name: file.name,
-                            type: file.type,
-                            size: file.size
-                        )
                     }
                 }
             } catch {
@@ -707,7 +572,8 @@ struct UploadFileModal: View {
         }
     }
     
-    /// Format file size thành string
+    // MARK: - Helpers
+    
     private func formatFileSize(_ bytes: Int) -> String {
         let formatter = ByteCountFormatter()
         formatter.allowedUnits = [.useKB, .useMB]
@@ -715,48 +581,38 @@ struct UploadFileModal: View {
         return formatter.string(fromByteCount: Int64(bytes))
     }
     
-    /// Format file name: giới hạn max 20 ký tự, nếu dài quá thì "xxx....mp4"
     private func formatFileName(_ fileName: String) -> String {
         let maxLength = 20
-        
-        // Lấy extension
         let fileExtension = (fileName as NSString).pathExtension
         let nameWithoutExtension = (fileName as NSString).deletingPathExtension
         
-        // Nếu tên file (không có extension) <= maxLength, trả về nguyên
         if nameWithoutExtension.count <= maxLength {
             return fileName
         }
         
-        // Nếu có extension, tính toán độ dài phần name
-        let extensionLength = fileExtension.isEmpty ? 0 : fileExtension.count + 1 // +1 cho dấu chấm
-        let availableLength = maxLength - extensionLength - 3 // -3 cho "..."
+        let extensionLength = fileExtension.isEmpty ? 0 : fileExtension.count + 1
+        let availableLength = maxLength - extensionLength - 3
         
         if availableLength > 0 {
             let truncatedName = String(nameWithoutExtension.prefix(availableLength))
             return fileExtension.isEmpty ? "\(truncatedName)..." : "\(truncatedName)....\(fileExtension)"
         } else {
-            // Nếu extension quá dài, chỉ hiển thị extension
             return fileExtension.isEmpty ? "..." : "....\(fileExtension)"
         }
     }
 }
 
-// MARK: - Local File Preview View (từ data local)
+// MARK: - Local File Preview View
 
-/// Preview file từ data local (chưa upload)
 struct LocalFilePreviewView: View {
     let file: FileAttachment
     let data: Data
-    @State private var tempVideoURL: URL?
-    @State private var tempAudioURL: URL?
     @State private var videoThumbnail: UIImage?
     
     var body: some View {
         Group {
             switch file.type {
             case .image:
-                // Image preview từ data - thumbnail nhỏ 85x48
                 if let uiImage = UIImage(data: data) {
                     Image(uiImage: uiImage)
                         .resizable()
@@ -776,7 +632,6 @@ struct LocalFilePreviewView: View {
                 }
                 
             case .video:
-                // Video preview từ data - chỉ hiển thị thumbnail (frame đầu tiên), không play được
                 if let thumbnail = videoThumbnail {
                     Image(uiImage: thumbnail)
                         .resizable()
@@ -798,7 +653,6 @@ struct LocalFilePreviewView: View {
                 }
                 
             case .audio:
-                // Audio preview - thumbnail nhỏ 85x48
                 RoundedRectangle(cornerRadius: 4)
                     .fill(Color.black.opacity(0.4))
                     .frame(width: 85, height: 48)
@@ -809,25 +663,19 @@ struct LocalFilePreviewView: View {
                     )
                 
             case .other:
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.gray.opacity(0.1))
-                    .frame(height: 200)
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.black.opacity(0.4))
+                    .frame(width: 85, height: 48)
                     .overlay(
                         Image(systemName: "doc.fill")
-                            .font(.custom("Overused Grotesk", size: 40))
-                            .foregroundColor(.gray)
+                            .font(.custom("Overused Grotesk", size: 20))
+                            .foregroundColor(.white)
                     )
             }
         }
-        .onDisappear {
-            // Cleanup temp files
-            cleanupTempFiles()
-        }
     }
     
-    /// Extract thumbnail từ video data (frame đầu tiên)
     private func extractVideoThumbnail() {
-        // Tạo temp URL từ data
         let tempDir = FileManager.default.temporaryDirectory
         let tempFile = tempDir.appendingPathComponent("\(UUID().uuidString).mp4")
         
@@ -835,7 +683,6 @@ struct LocalFilePreviewView: View {
             return
         }
         
-        // Extract thumbnail từ frame đầu tiên
         let asset = AVAsset(url: tempFile)
         let imageGenerator = AVAssetImageGenerator(asset: asset)
         imageGenerator.appliesPreferredTrackTransform = true
@@ -846,53 +693,32 @@ struct LocalFilePreviewView: View {
         
         Task {
             do {
-                let cgImage = try await imageGenerator.image(at: time).image
+                let cgImage: CGImage
+                if #available(iOS 16.0, *) {
+                    cgImage = try await imageGenerator.image(at: time).image
+                } else {
+                    // iOS 15: dùng synchronous method
+                    cgImage = try imageGenerator.copyCGImage(at: time, actualTime: nil)
+                }
                 let uiImage = UIImage(cgImage: cgImage)
                 
                 await MainActor.run {
                     videoThumbnail = uiImage
                 }
                 
-                // Cleanup temp file
                 try? FileManager.default.removeItem(at: tempFile)
             } catch {
                 await MainActor.run {
                     videoThumbnail = nil
                 }
-                // Cleanup temp file
                 try? FileManager.default.removeItem(at: tempFile)
             }
         }
     }
-    
-    /// Tạo temporary URL cho audio từ data
-    private func createTempAudioURL() -> URL? {
-        let tempDir = FileManager.default.temporaryDirectory
-        let fileExtension = (file.name as NSString).pathExtension.isEmpty ? "mp3" : (file.name as NSString).pathExtension
-        let tempFile = tempDir.appendingPathComponent("\(UUID().uuidString).\(fileExtension)")
-        
-        do {
-            try data.write(to: tempFile)
-            return tempFile
-        } catch {
-            return nil
-        }
-    }
-    
-    /// Cleanup temporary files
-    private func cleanupTempFiles() {
-        if let tempURL = tempVideoURL {
-            try? FileManager.default.removeItem(at: tempURL)
-        }
-        if let tempURL = tempAudioURL {
-            try? FileManager.default.removeItem(at: tempURL)
-        }
-    }
 }
 
-// MARK: - Remote File Preview View (từ URL)
+// MARK: - Remote File Preview View
 
-/// Preview file từ URL (đã upload)
 struct RemoteFilePreviewView: View {
     let file: FileAttachment
     
@@ -900,7 +726,6 @@ struct RemoteFilePreviewView: View {
         Group {
             switch file.type {
             case .image:
-                // Image preview từ URL (thumbnail 85x48)
                 AsyncImage(url: URL(string: file.url)) { phase in
                     switch phase {
                     case .empty:
@@ -933,7 +758,6 @@ struct RemoteFilePreviewView: View {
                 }
                 
             case .video:
-                // Video thumbnail (85x48) - chỉ hiển thị thumbnail, không có play button
                 AsyncImage(url: URL(string: file.url)) { phase in
                     switch phase {
                     case .empty:
@@ -961,7 +785,6 @@ struct RemoteFilePreviewView: View {
                 }
                 
             case .audio:
-                // Audio icon placeholder (85x48)
                 RoundedRectangle(cornerRadius: 4)
                     .fill(Color.black.opacity(0.4))
                     .frame(width: 85, height: 48)
@@ -985,28 +808,6 @@ struct RemoteFilePreviewView: View {
     }
 }
 
-// MARK: - Corner Radius Extension
-
-extension View {
-    func cornerRadius(_ radius: CGFloat, corners: UIRectCorner) -> some View {
-        clipShape(RoundedCorner(radius: radius, corners: corners))
-    }
-}
-
-struct RoundedCorner: Shape {
-    var radius: CGFloat = .infinity
-    var corners: UIRectCorner = .allCorners
-
-    func path(in rect: CGRect) -> Path {
-        let path = UIBezierPath(
-            roundedRect: rect,
-            byRoundingCorners: corners,
-            cornerRadii: CGSize(width: radius, height: radius)
-        )
-        return Path(path.cgPath)
-    }
-}
-
 // MARK: - Preview
 
 #Preview {
@@ -1016,4 +817,3 @@ struct RoundedCorner: Shape {
         selectedFileData: .constant(nil)
     )
 }
-

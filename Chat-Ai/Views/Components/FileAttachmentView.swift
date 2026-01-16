@@ -192,8 +192,7 @@ struct FullScreenMediaView: View {
                         
                         // File name
                         Text(attachment.name)
-                            .font(.custom("Overused Grotesk", size: 17))
-                            .fontWeight(.semibold)
+                            .font(Font.custom("Overused Grotesk", size: 17).weight(.semibold))
                             .foregroundColor(.white)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
@@ -219,29 +218,53 @@ struct FullScreenMediaView: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        player?.pause()
-                        dismiss()
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "xmark")
-                            Text("Close")
-                        }
-                        .foregroundColor(.white)
+            .navigationBarItems(
+                leading: Button {
+                    player?.pause()
+                    dismiss()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "xmark")
+                        Text("Close")
                     }
-                }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
+                    .foregroundColor(.white)
+                },
+                trailing: Group {
                     if let url = URL(string: attachment.url) {
-                        ShareLink(item: url) {
-                            Image(systemName: "square.and.arrow.up")
-                                .foregroundColor(.white)
+                        if #available(iOS 16.0, *) {
+                            ShareLink(item: url) {
+                                Image(systemName: "square.and.arrow.up")
+                                    .foregroundColor(.white)
+                            }
+                        } else {
+                            Button {
+                                shareURL(url)
+                            } label: {
+                                Image(systemName: "square.and.arrow.up")
+                                    .foregroundColor(.white)
+                            }
                         }
                     }
                 }
+            )
+        }
+        .navigationViewStyle(StackNavigationViewStyle())
+    }
+    
+    // MARK: - Share URL (iOS 15 compatible)
+    
+    private func shareURL(_ url: URL) {
+        let activityVC = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first,
+           let rootVC = window.rootViewController {
+            var presentingVC = rootVC
+            while let presented = presentingVC.presentedViewController {
+                presentingVC = presented
             }
+            activityVC.popoverPresentationController?.sourceView = window
+            presentingVC.present(activityVC, animated: true)
         }
     }
 }

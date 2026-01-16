@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 import Foundation
 
 enum PasteLinkStatus: Equatable {
@@ -57,9 +58,7 @@ struct PasteLinkModal: View {
             .ignoresSafeArea(edges: .all)
             .background(.ultraThinMaterial)
             .onTapGesture {
-                if !isLoading {
-                    isPresented = false
-                }
+                // Không làm gì - chặn tap để đóng modal
             }
     }
     

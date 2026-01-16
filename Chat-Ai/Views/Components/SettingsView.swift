@@ -18,8 +18,10 @@ struct SettingsView: View {
     
     @State private var showingEditProfile = false
     @State private var showingLogoutConfirmation = false
+    @State private var showingDeleteAccountConfirmation = false
     @State private var hasActiveSubscription = false
     @State private var toastMessage: String? = nil
+    @State private var isDeletingAccount = false
     
     init(isPresented: Binding<Bool> = .constant(true)) {
         _isPresented = isPresented
@@ -48,6 +50,20 @@ struct SettingsView: View {
                     .environmentObject(authViewModel)
                     .transition(.move(edge: .bottom))
                     .zIndex(2000)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if showingDeleteAccountConfirmation {
+                DeleteAccountConfirmationView(
+                    isPresented: $showingDeleteAccountConfirmation,
+                    isDeleting: $isDeletingAccount,
+                    onConfirm: {
+                        handleDeleteAccount()
+                    }
+                )
+                .environmentObject(authViewModel)
+                .transition(.move(edge: .bottom))
+                .zIndex(3000)
             }
         }
         .overlay(alignment: .top) {
@@ -96,8 +112,7 @@ struct SettingsView: View {
             Spacer()
             
             Text("Settings")
-                .font(.custom("Overused Grotesk", size: 16))
-                .fontWeight(.semibold)
+                .font(Font.custom("Overused Grotesk", size: 16).weight(.semibold))
                 .foregroundColor(Color(hex: "#020202"))
                 .multilineTextAlignment(.center)
                 .lineSpacing(0)
@@ -105,7 +120,6 @@ struct SettingsView: View {
                 .textCase(nil)
                 .environment(\.font, .custom("Overused Grotesk", size: 16))
                 .font(.system(size: 16, weight: .semibold))
-                .fontDesign(.default)
                 .monospacedDigit()
                 .frame(height: 24, alignment: .center)
             
@@ -140,8 +154,7 @@ struct SettingsView: View {
                                 VStack(spacing: 4) {
                                     UserDisplayNameText()
                                         .environmentObject(authViewModel)
-                                        .font(.custom("Overused Grotesk", size: 16))
-                                        .fontWeight(.semibold) // 600
+                                        .font(Font.custom("Overused Grotesk", size: 16).weight(.semibold)) // 600
                                         .foregroundColor(Color(hex: "#020202")) // matches var(--text-neutral-text-neutral-primary, #020202)
                                         .lineLimit(1)
                                         .truncationMode(.tail) // for text-overflow: ellipsis
@@ -150,8 +163,7 @@ struct SettingsView: View {
                                         .frame(maxWidth: .infinity, minHeight: 24, maxHeight: 24, alignment: .center) // line-height: 24px; overflow hidden via lineLimit
                                     
                                     Text(formatEmail(authViewModel.currentUser?.email ?? ""))
-                                        .font(.custom("Overused Grotesk", size: 14))
-                                        .fontWeight(.regular)
+                                        .font(Font.custom("Overused Grotesk", size: 14).weight(.regular))
                                         .foregroundColor(Color.black.opacity(0.6)) // rgba(0,0,0,0.60)
                                         .multilineTextAlignment(.center)
                                         .monospacedDigit() // tabular-nums, lining-nums is default in SwiftUI
@@ -164,8 +176,7 @@ struct SettingsView: View {
                                     showingEditProfile = true
                                 }) {
                                     Text("Edit Profile")
-                                        .font(.custom("Overused Grotesk", size: 13))
-                                        .fontWeight(.semibold) // 600 weight
+                                        .font(Font.custom("Overused Grotesk", size: 13).weight(.semibold)) // 600 weight
                                         .foregroundColor(Color(hex: "#020202"))
                                         .padding(.horizontal, 16)
                                         .padding(.vertical, 8)
@@ -175,7 +186,6 @@ struct SettingsView: View {
                                         )
                                         .lineSpacing(3) // 16px line height - 13px font size = 3px
                                         .monospacedDigit() // ensures tabular nums
-                                        .fontDesign(.monospaced) // for slashed zero/lining if available, fallback
                                 }
                         }
                         .frame(maxWidth: .infinity)
@@ -277,6 +287,22 @@ struct SettingsView: View {
                                     openURL("https://quick-vid-read.lovable.app/privacy")
                                 }
                             )
+                            
+                            // Divider
+                            Rectangle()
+                                .fill(Color(hex: "F4F4F4"))
+                                .frame(height: 1)
+                                .padding(.leading, 60)
+                            
+                            // Delete Account
+                            SettingsRow(
+                                iconImage: "group_3",
+                                title: "Delete Account",
+                                showArrow: true,
+                                action: {
+                                    showingDeleteAccountConfirmation = true
+                                }
+                            )
                         }
                         .padding(16)
                         .background(Color.white)
@@ -330,7 +356,44 @@ struct SettingsView: View {
     
     private func handleUpgrade() {
         dismiss()
-        navigationCoordinator.navigationPath.append(PaywallDestination())
+        navigationCoordinator.navigateToPaywall()
+    }
+    
+    // MARK: - Delete Account
+    
+    private func handleDeleteAccount() {
+        isDeletingAccount = true
+        
+        Task {
+            do {
+                // 1. Xóa tất cả conversations và messages
+                try await SupabaseService.shared.deleteAllConversations()
+                
+                // 2. Xóa user profile từ Supabase
+                if let userId = authViewModel.currentUser?.id {
+                    try await SupabaseService.shared.deleteUserProfile(userId: userId)
+                }
+                
+                // 3. Xóa user từ Supabase Auth (nếu có API endpoint)
+                // Note: Supabase Auth user deletion thường cần admin API hoặc user tự xóa qua email
+                // Ở đây chúng ta sẽ logout và clear local data
+                
+                // 4. Logout và clear local data
+                try await AuthService.shared.signOut()
+                await authViewModel.signOut()
+                
+                await MainActor.run {
+                    isDeletingAccount = false
+                    showingDeleteAccountConfirmation = false
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    isDeletingAccount = false
+                    showToast("Failed to delete account: \(error.localizedDescription)")
+                }
+            }
+        }
     }
     
     private func formatUserName(_ name: String) -> String {
@@ -362,8 +425,7 @@ struct SettingsView: View {
     private func toastView(message: String) -> some View {
         HStack(spacing: 8) {
             Text(message)
-                .font(.custom("Overused Grotesk", size: 14))
-                .fontWeight(.regular)
+                .font(Font.custom("Overused Grotesk", size: 14).weight(.regular))
                 .foregroundColor(.textPrimary)
                 .multilineTextAlignment(.center)
         }
@@ -379,7 +441,12 @@ struct SettingsView: View {
     
     private func openURL(_ urlString: String) {
         guard let url = URL(string: urlString) else { return }
-        UIApplication.shared.open(url)
+        // Mở trong Safari với options để đảm bảo link hoạt động
+        UIApplication.shared.open(url, options: [.universalLinksOnly: false]) { success in
+            if !success {
+                print("❌ [SettingsView] Failed to open URL: \(urlString)")
+            }
+        }
     }
     
 }

@@ -443,6 +443,30 @@ actor SupabaseService {
     
     // MARK: - User Profile Methods
     
+    /// Xóa user profile từ database
+    /// - Parameter userId: ID của user cần xóa profile
+    func deleteUserProfile(userId: UUID) async throws {
+        guard let url = URL(string: "\(AppConfig.supabaseURL)/rest/v1/user_profiles?user_id=eq.\(userId.uuidString)") else {
+            throw SupabaseError.invalidURL
+        }
+        
+        let request = try await createAuthenticatedRequest(url: url, method: "DELETE")
+        let (_, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SupabaseError.requestFailed
+        }
+        
+        // ✅ Kiểm tra 401 Unauthorized → Token hết hạn
+        if httpResponse.statusCode == 401 {
+            throw SupabaseError.unauthorized
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw SupabaseError.requestFailed
+        }
+    }
+    
     /// Lấy user profile từ database
     /// - Parameter userId: ID của user
     /// - Returns: Dictionary chứa firstName, lastName, avatarURL hoặc nil nếu không có

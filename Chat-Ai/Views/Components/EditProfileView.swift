@@ -17,8 +17,10 @@ struct EditProfileView: View {
     @State private var lastName: String = ""
     @State private var isSaving = false
     @State private var selectedImage: UIImage?
-    @State private var selectedItem: PhotosPickerItem?
     @State private var showingImagePicker = false
+    
+    // iOS 16+ PhotosPicker (dùng Any để tránh lỗi @available trên stored property)
+    @State private var _selectedItemStorage: Any? = nil
     
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -99,15 +101,7 @@ struct EditProfileView: View {
             // Load user data từ local trước
             loadUserData()
         }
-        .onChange(of: selectedItem) { newItem in
-            Task {
-                if let newItem = newItem {
-                    if let data = try? await newItem.loadTransferable(type: Data.self) {
-                        selectedImage = UIImage(data: data)
-                    }
-                }
-            }
-        }
+        .modifier(PhotosPickerModifier(selectedImage: $selectedImage, selectedItemStorage: $_selectedItemStorage))
     }
     
     // MARK: - Avatar Section
@@ -137,16 +131,34 @@ struct EditProfileView: View {
                     Spacer()
                     HStack {
                         Spacer()
-                        PhotosPicker(selection: $selectedItem, matching: .images) {
-                            Image("camera_icon")
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 28, height: 28)
+                        if #available(iOS 16.0, *) {
+                            PhotosPicker(selection: Binding(
+                                get: { _selectedItemStorage as? PhotosPickerItem },
+                                set: { _selectedItemStorage = $0 }
+                            ), matching: .images) {
+                                Image("camera_icon")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 28, height: 28)
+                            }
+                            .offset(x: 0, y: 0)
+                        } else {
+                            Button(action: {
+                                showingImagePicker = true
+                            }) {
+                                Image("camera_icon")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 28, height: 28)
+                            }
+                            .offset(x: 0, y: 0)
                         }
-                        .offset(x: 0, y: 0)
                     }
                 }
                 .frame(width: 80, height: 80)
+                .sheet(isPresented: $showingImagePicker) {
+                    ImagePicker(selectedImage: $selectedImage)
+                }
             }
         }
     }

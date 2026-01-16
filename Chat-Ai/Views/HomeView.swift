@@ -17,6 +17,7 @@ struct HomeView: View {
     
     // File picker states
     @State private var showingUploadModal = false
+    @State private var showingPasteLinkModal = false
     @State private var showingImageVideoPicker = false
     @State private var showingAudioPicker = false
     @State private var selectedFile: FileAttachment?
@@ -96,6 +97,19 @@ struct HomeView: View {
                         isPresented: $showingUploadModal,
                         selectedFile: $selectedFile,
                         selectedFileData: $selectedFileData,
+                        onTranscribeSuccess: { conversation in
+                            // Navigate đến ChatView với conversation mới
+                            navigationCoordinator.navigateToConversation(conversation)
+                        }
+                    )
+                    .transition(.move(edge: .bottom))
+                    .zIndex(1000)
+                }
+                
+                // Paste Link Modal
+                if showingPasteLinkModal {
+                    PasteLinkModal(
+                        isPresented: $showingPasteLinkModal,
                         onTranscribeSuccess: { conversation in
                             // Navigate đến ChatView với conversation mới
                             navigationCoordinator.navigateToConversation(conversation)
@@ -243,7 +257,8 @@ struct HomeView: View {
                 backgroundColor: Color(hex: "FF920A").opacity(0.1),
                 iconColor: Color(hex: "FF920A")
             ) {
-                // TODO: Handle paste link
+                // Hiển thị modal paste link
+                showingPasteLinkModal = true
             }
         }
         .padding(.horizontal, 16)

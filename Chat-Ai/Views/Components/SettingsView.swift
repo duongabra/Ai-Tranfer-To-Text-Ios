@@ -19,6 +19,7 @@ struct SettingsView: View {
     @State private var showingEditProfile = false
     @State private var showingLogoutConfirmation = false
     @State private var hasActiveSubscription = false
+    @State private var toastMessage: String? = nil
     
     init(isPresented: Binding<Bool> = .constant(true)) {
         _isPresented = isPresented
@@ -47,6 +48,16 @@ struct SettingsView: View {
                     .environmentObject(authViewModel)
                     .transition(.move(edge: .bottom))
                     .zIndex(2000)
+            }
+        }
+        .overlay(alignment: .top) {
+            // Toast message - hiển thị ở góc trên cùng
+            if let toast = toastMessage {
+                toastView(message: toast)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .animation(.spring(response: 0.3, dampingFraction: 0.8), value: toastMessage)
+                    .zIndex(9999)
+                    .padding(.top, 16)
             }
         }
     }
@@ -230,7 +241,8 @@ struct SettingsView: View {
                                 value: "English",
                                 showArrow: true,
                                 action: {
-                                    // TODO: Show language picker
+                                    // Hiển thị toast message
+                                    showToast("Only English is supported at the moment")
                                 }
                             )
                             
@@ -246,7 +258,7 @@ struct SettingsView: View {
                                 title: "Terms of Services",
                                 showArrow: true,
                                 action: {
-                                    // TODO: Open Terms of Services
+                                    openURL("https://quick-vid-read.lovable.app/terms")
                                 }
                             )
                             
@@ -262,7 +274,7 @@ struct SettingsView: View {
                                 title: "Privacy",
                                 showArrow: true,
                                 action: {
-                                    // TODO: Open Privacy Policy
+                                    openURL("https://quick-vid-read.lovable.app/privacy")
                                 }
                             )
                         }
@@ -335,6 +347,40 @@ struct SettingsView: View {
         return email
     }
     
+    // MARK: - Toast Message
+    
+    private func showToast(_ message: String) {
+        toastMessage = message
+        // Tự động ẩn sau 3 giây
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            withAnimation {
+                toastMessage = nil
+            }
+        }
+    }
+    
+    private func toastView(message: String) -> some View {
+        HStack(spacing: 8) {
+            Text(message)
+                .font(.custom("Overused Grotesk", size: 14))
+                .fontWeight(.regular)
+                .foregroundColor(.textPrimary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color.white)
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: 4)
+        .padding(.horizontal, 16)
+    }
+    
+    // MARK: - Open URL
+    
+    private func openURL(_ urlString: String) {
+        guard let url = URL(string: urlString) else { return }
+        UIApplication.shared.open(url)
+    }
     
 }
 

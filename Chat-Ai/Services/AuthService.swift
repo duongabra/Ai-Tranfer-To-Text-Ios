@@ -173,23 +173,39 @@ actor AuthService {
         // Lưu session (bao gồm cả refresh token)
         await saveSession(user: user, accessToken: token, refreshToken: refreshToken)
         
-        // Nếu đăng nhập lần đầu và có ảnh từ Google/Apple, lưu vào DB
-        if let avatarURL = user.avatarURL, !avatarURL.isEmpty {
-            Task {
-                do {
-                    // Kiểm tra xem đã có profile trong DB chưa
-                    let existingProfile = try? await SupabaseService.shared.getUserProfile(userId: user.id)
-                    if existingProfile == nil {
-                        // Chưa có profile → đăng nhập lần đầu → lưu avatar vào DB
-                        try await SupabaseService.shared.saveUserProfile(
-                            userId: user.id,
-                            firstName: nil,
-                            lastName: nil,
-                            avatarURL: avatarURL
-                        )
+        // Đảm bảo user_profile được tạo khi đăng nhập lần đầu
+        // Parse firstName và lastName từ Google user_metadata
+        Task {
+            do {
+                // Lấy thông tin từ user_metadata để parse firstName/lastName
+                var firstName: String?
+                var lastName: String?
+                
+                // Fetch lại user info để lấy metadata (hoặc có thể parse từ displayName)
+                if let displayName = user.displayName {
+                    let components = displayName.split(separator: " ")
+                    if components.count >= 2 {
+                        firstName = String(components[0])
+                        lastName = components[1...].joined(separator: " ")
+                    } else if components.count == 1 {
+                        firstName = String(components[0])
                     }
-                } catch {
                 }
+                
+                // Nếu không có name, set default là "User"
+                let finalFirstName = firstName ?? "User"
+                let finalLastName = lastName
+                
+                try await SupabaseService.shared.saveUserProfile(
+                    userId: user.id,
+                    firstName: finalFirstName,
+                    lastName: finalLastName,
+                    avatarURL: user.avatarURL
+                )
+                print("✅ [AuthService] Saved Google user name to profile: firstName=\(finalFirstName), lastName=\(finalLastName ?? "nil")")
+            } catch {
+                print("⚠️ [AuthService] Failed to ensure user profile exists: \(error)")
+                // Không throw error vì đây không phải là lỗi critical
             }
         }
         
@@ -227,11 +243,28 @@ actor AuthService {
         // Optional: Parse thêm thông tin từ user_metadata
         var displayName: String?
         var avatarURL: String?
+        var firstName: String?
+        var lastName: String?
         
         if let userMetadata = json["user_metadata"] as? [String: Any] {
             displayName = userMetadata["full_name"] as? String
             // Ưu tiên avatar_url, nếu không có thì lấy picture (từ Google)
             avatarURL = userMetadata["avatar_url"] as? String ?? userMetadata["picture"] as? String
+            
+            // Google có thể trả về first_name và last_name trong metadata
+            firstName = userMetadata["first_name"] as? String
+            lastName = userMetadata["last_name"] as? String
+            
+            // Nếu không có first_name/last_name, parse từ full_name
+            if firstName == nil && lastName == nil, let fullName = displayName {
+                let components = fullName.split(separator: " ")
+                if components.count >= 2 {
+                    firstName = String(components[0])
+                    lastName = components[1...].joined(separator: " ")
+                } else if components.count == 1 {
+                    firstName = String(components[0])
+                }
+            }
         }
         
         return User(
@@ -718,6 +751,11 @@ class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate {
         let email = appleIDCredential.email ?? "\(userID)@privaterelay.appleid.com"
         let fullName = appleIDCredential.fullName
         
+        // Parse firstName và lastName từ Apple fullName
+        // QUAN TRỌNG: Apple chỉ trả về fullName trong lần đăng nhập đầu tiên
+        let firstName = fullName?.givenName
+        let lastName = fullName?.familyName
+        
         var displayName: String?
         if let givenName = fullName?.givenName, let familyName = fullName?.familyName {
             displayName = "\(givenName) \(familyName)"
@@ -732,7 +770,9 @@ class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate {
                     identityToken: identityToken,
                     userID: userID,
                     email: email,
-                    displayName: displayName
+                    displayName: displayName,
+                    firstName: firstName,
+                    lastName: lastName
                 )
                 self.completion(.success(user))
             } catch {
@@ -746,7 +786,7 @@ class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate {
     }
     
     /// Authenticate với Supabase sử dụng Apple identity token
-    private func authenticateWithSupabase(identityToken: String, userID: String, email: String, displayName: String?) async throws -> User {
+    private func authenticateWithSupabase(identityToken: String, userID: String, email: String, displayName: String?, firstName: String? = nil, lastName: String? = nil) async throws -> User {
         // Gọi Supabase API để sign in với Apple
         guard let url = URL(string: "\(AppConfig.supabaseURL)/auth/v1/token?grant_type=id_token") else {
             throw AuthError.invalidURL
@@ -807,23 +847,25 @@ class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate {
         // Lưu session
         await AuthService.shared.saveSession(user: user, accessToken: accessToken, refreshToken: refreshToken)
         
-        // Nếu đăng nhập lần đầu và có ảnh từ Apple, lưu vào DB
-        if let avatarURL = avatarURL, !avatarURL.isEmpty {
-            Task {
-                do {
-                    // Kiểm tra xem đã có profile trong DB chưa
-                    let existingProfile = try? await SupabaseService.shared.getUserProfile(userId: id)
-                    if existingProfile == nil {
-                        // Chưa có profile → đăng nhập lần đầu → lưu avatar vào DB
-                        try await SupabaseService.shared.saveUserProfile(
-                            userId: id,
-                            firstName: nil,
-                            lastName: nil,
-                            avatarURL: avatarURL
-                        )
-                    }
-                } catch {
-                }
+        // Đảm bảo user_profile được tạo khi đăng nhập lần đầu
+        // QUAN TRỌNG: Lưu firstName và lastName từ Apple ngay lần đầu (chỉ có trong lần đầu)
+        Task {
+            do {
+                // Nếu có firstName hoặc lastName từ Apple, lưu vào profile
+                // Nếu không có, set default là "User"
+                let finalFirstName = firstName ?? "User"
+                let finalLastName = lastName
+                
+                try await SupabaseService.shared.saveUserProfile(
+                    userId: id,
+                    firstName: finalFirstName,
+                    lastName: finalLastName,
+                    avatarURL: avatarURL
+                )
+                print("✅ [AuthService] Saved Apple user name to profile: firstName=\(finalFirstName), lastName=\(finalLastName ?? "nil")")
+            } catch {
+                print("⚠️ [AuthService] Failed to ensure user profile exists: \(error)")
+                // Không throw error vì đây không phải là lỗi critical
             }
         }
         

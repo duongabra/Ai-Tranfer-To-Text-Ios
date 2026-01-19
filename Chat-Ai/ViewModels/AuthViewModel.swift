@@ -90,6 +90,14 @@ class AuthViewModel: ObservableObject {
     /// Method này sẽ cập nhật currentUser trực tiếp
     func loadUserInfoFromDB(userId: UUID) async {
         do {
+            // Đảm bảo user_profile tồn tại trước khi load
+            // (Nếu chưa có thì tạo mới với dữ liệu từ currentUser)
+            let currentAvatarURL = currentUser?.avatarURL
+            try await SupabaseService.shared.ensureUserProfileExists(
+                userId: userId,
+                avatarURL: currentAvatarURL
+            )
+            
             // Lấy profile từ DB
             guard let profile = try await SupabaseService.shared.getUserProfile(userId: userId) else {
                 return
@@ -114,6 +122,7 @@ class AuthViewModel: ObservableObject {
                 }
             }
         } catch {
+            print("⚠️ [AuthViewModel] Failed to load user info from DB: \(error)")
         }
     }
     

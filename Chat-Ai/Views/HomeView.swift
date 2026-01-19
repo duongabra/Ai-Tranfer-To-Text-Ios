@@ -345,7 +345,7 @@ struct HomeView: View {
     
     private func checkSubscriptionStatus() async {
         isLoadingSubscription = true
-        
+    
         // TẠM THỜI: Check subscription từ StoreKit 2
         let currentProductId = await StoreKitService.shared.getCurrentSubscriptionProductId()
         hasActiveSubscription = (currentProductId != nil)

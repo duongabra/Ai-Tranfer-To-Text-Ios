@@ -18,6 +18,7 @@ struct EditProfileView: View {
     @State private var isSaving = false
     @State private var selectedImage: UIImage?
     @State private var showingImagePicker = false
+    @State private var errorMessage: String? = nil
     
     // iOS 16+ PhotosPicker (dùng Any để tránh lỗi @available trên stored property)
     @State private var _selectedItemStorage: Any? = nil
@@ -102,6 +103,35 @@ struct EditProfileView: View {
             loadUserData()
         }
         .modifier(PhotosPickerModifier(selectedImage: $selectedImage, selectedItemStorage: $_selectedItemStorage))
+        .overlay(alignment: .top) {
+            // Error toast message
+            if let error = errorMessage {
+                HStack(spacing: 8) {
+                    Text(error)
+                        .font(Font.custom("Overused Grotesk", size: 14).weight(.regular))
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color.red)
+                .cornerRadius(12)
+                .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: 4)
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: errorMessage)
+                .zIndex(9999)
+                .onAppear {
+                    // Tự động ẩn sau 4 giây
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                        withAnimation {
+                            errorMessage = nil
+                        }
+                    }
+                }
+            }
+        }
     }
     
     // MARK: - Avatar Section
@@ -267,7 +297,53 @@ struct EditProfileView: View {
             } catch {
                 await MainActor.run {
                     isSaving = false
-                    // TODO: Show error message to user
+                    
+                    // Log chi tiết lỗi
+                    print("❌ [EditProfileView] Error saving profile:")
+                    print("   - Error type: \(type(of: error))")
+                    print("   - Error description: \(error.localizedDescription)")
+                    print("   - Full error: \(error)")
+                    
+                    // Kiểm tra loại lỗi cụ thể
+                    var errorMessageText = "Failed to save profile"
+                    if let supabaseError = error as? SupabaseError {
+                        switch supabaseError {
+                        case .unauthorized:
+                            errorMessageText = "Session expired. Please login again."
+                        case .requestFailed:
+                            errorMessageText = "Cannot connect to server. Please check your internet connection."
+                        case .invalidURL:
+                            errorMessageText = "Invalid request. Please try again."
+                        case .decodingFailed:
+                            errorMessageText = "Server response error. Please try again."
+                        }
+                    } else {
+                        // Network error hoặc lỗi khác
+                        let nsError = error as NSError
+                        if nsError.domain == NSURLErrorDomain {
+                            switch nsError.code {
+                            case NSURLErrorNotConnectedToInternet:
+                                errorMessageText = "No internet connection. Please check your network."
+                            case NSURLErrorTimedOut:
+                                errorMessageText = "Request timed out. Please try again."
+                            case NSURLErrorCannotConnectToHost:
+                                errorMessageText = "Cannot connect to server. Please check your internet connection."
+                            default:
+                                errorMessageText = "Network error: \(error.localizedDescription)"
+                            }
+                        } else {
+                            errorMessageText = "Failed to save profile: \(error.localizedDescription)"
+                        }
+                    }
+                    
+                    errorMessage = errorMessageText
+                    
+                    // Tự động ẩn error message sau 5 giây
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                        withAnimation {
+                            errorMessage = nil
+                        }
+                    }
                 }
             }
         }

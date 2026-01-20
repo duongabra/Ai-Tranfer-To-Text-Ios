@@ -124,7 +124,6 @@ class AuthViewModel: ObservableObject {
                 }
             }
         } catch {
-            print("⚠️ [AuthViewModel] Failed to load user info from DB: \(error)")
         }
     }
     

@@ -298,12 +298,6 @@ struct EditProfileView: View {
                 await MainActor.run {
                     isSaving = false
                     
-                    // Log chi tiết lỗi
-                    print("❌ [EditProfileView] Error saving profile:")
-                    print("   - Error type: \(type(of: error))")
-                    print("   - Error description: \(error.localizedDescription)")
-                    print("   - Full error: \(error)")
-                    
                     // Kiểm tra loại lỗi cụ thể
                     var errorMessageText = "Failed to save profile"
                     if let supabaseError = error as? SupabaseError {

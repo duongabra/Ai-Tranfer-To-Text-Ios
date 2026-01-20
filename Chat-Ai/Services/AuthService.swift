@@ -202,9 +202,7 @@ actor AuthService {
                     lastName: finalLastName,
                     avatarURL: user.avatarURL
                 )
-                print("✅ [AuthService] Saved Google user name to profile: firstName=\(finalFirstName), lastName=\(finalLastName ?? "nil")")
             } catch {
-                print("⚠️ [AuthService] Failed to ensure user profile exists: \(error)")
                 // Không throw error vì đây không phải là lỗi critical
             }
         }
@@ -862,9 +860,7 @@ class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate {
                     lastName: finalLastName,
                     avatarURL: avatarURL
                 )
-                print("✅ [AuthService] Saved Apple user name to profile: firstName=\(finalFirstName), lastName=\(finalLastName ?? "nil")")
             } catch {
-                print("⚠️ [AuthService] Failed to ensure user profile exists: \(error)")
                 // Không throw error vì đây không phải là lỗi critical
             }
         }

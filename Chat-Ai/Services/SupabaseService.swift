@@ -205,8 +205,6 @@ actor SupabaseService {
     /// - Parameter conversationId: ID của conversation
     /// - Returns: Mảng các Message, sắp xếp theo thời gian tạo
     func fetchMessages(conversationId: UUID) async throws -> [Message] {
-        print("📥 [SupabaseService] fetchMessages() - ConversationId: \(conversationId)")
-        
         guard let url = URL(string: "\(AppConfig.supabaseURL)/rest/v1/messages?conversation_id=eq.\(conversationId.uuidString)&order=created_at.asc") else {
             throw SupabaseError.invalidURL
         }
@@ -214,14 +212,11 @@ actor SupabaseService {
         // Tạo authenticated GET request
         let request = try await createAuthenticatedRequest(url: url, method: "GET")
         
-        print("📥 [SupabaseService] Đang fetch messages từ DB...")
         let (data, response) = try await URLSession.shared.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
             throw SupabaseError.requestFailed
         }
-        
-        print("📥 [SupabaseService] HTTP Status Code: \(httpResponse.statusCode)")
         
         // ✅ Kiểm tra 401 Unauthorized → Token hết hạn
         if httpResponse.statusCode == 401 {
@@ -229,29 +224,12 @@ actor SupabaseService {
         }
         
         guard (200...299).contains(httpResponse.statusCode) else {
-            if let errorString = String(data: data, encoding: .utf8) {
-                print("📥 [SupabaseService] Error response: \(errorString)")
-            }
             throw SupabaseError.requestFailed
         }
         
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let messages = try decoder.decode([Message].self, from: data)
-        
-        print("📥 [SupabaseService] Đã fetch \(messages.count) messages từ DB")
-        for (index, message) in messages.enumerated() {
-            print("📥 [SupabaseService] Message \(index):")
-            print("   - Role: \(message.role.rawValue)")
-            print("   - ID: \(message.id)")
-            print("   - Content: \(message.content.prefix(50))...")
-            print("   - File URL: \(message.fileUrl ?? "nil")")
-            print("   - File Name: \(message.fileName ?? "nil")")
-            print("   - File Type: \(message.fileType ?? "nil")")
-            if message.fileType == "other" {
-                print("   ✅ This is a transcription file (fileType=other)")
-            }
-        }
         
         return messages
     }
@@ -275,10 +253,6 @@ actor SupabaseService {
         fileType: String? = nil,
         fileSize: Int? = nil
     ) async throws -> Message {
-        print("💾 [SupabaseService] createMessage() - Role nhận được: \(role.rawValue)")
-        print("💾 [SupabaseService] createMessage() - Content length: \(content.count)")
-        print("💾 [SupabaseService] createMessage() - ConversationId: \(conversationId)")
-        
         let newMessage = Message(
             conversationId: conversationId,
             role: role,
@@ -289,8 +263,6 @@ actor SupabaseService {
             fileSize: fileSize
         )
         
-        print("💾 [SupabaseService] newMessage role: \(newMessage.role.rawValue)")
-        
         guard let url = URL(string: "\(AppConfig.supabaseURL)/rest/v1/messages") else {
             throw SupabaseError.invalidURL
         }
@@ -299,24 +271,16 @@ actor SupabaseService {
         encoder.dateEncodingStrategy = .iso8601
         let jsonData = try encoder.encode(newMessage)
         
-        // Debug: In ra JSON để kiểm tra role
-        if let jsonString = String(data: jsonData, encoding: .utf8) {
-            print("💾 [SupabaseService] JSON data gửi lên DB: \(jsonString)")
-        }
-        
         // Tạo authenticated POST request
         var request = try await createAuthenticatedRequest(url: url, method: "POST")
         request.setValue("return=representation", forHTTPHeaderField: "Prefer")
         request.httpBody = jsonData
         
-        print("💾 [SupabaseService] Đang gửi request lên DB...")
         let (data, response) = try await URLSession.shared.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
             throw SupabaseError.requestFailed
         }
-        
-        print("💾 [SupabaseService] HTTP Status Code: \(httpResponse.statusCode)")
         
         // ✅ Kiểm tra 401 Unauthorized → Token hết hạn
         if httpResponse.statusCode == 401 {
@@ -324,9 +288,6 @@ actor SupabaseService {
         }
         
         guard (200...299).contains(httpResponse.statusCode) else {
-            if let errorString = String(data: data, encoding: .utf8) {
-                print("💾 [SupabaseService] Error response: \(errorString)")
-            }
             throw SupabaseError.requestFailed
         }
         
@@ -337,10 +298,6 @@ actor SupabaseService {
         guard let createdMessage = messages.first else {
             throw SupabaseError.decodingFailed
         }
-        
-        print("💾 [SupabaseService] Message đã lưu vào DB thành công")
-        print("💾 [SupabaseService] Created message role từ DB: \(createdMessage.role.rawValue)")
-        print("💾 [SupabaseService] Created message id: \(createdMessage.id)")
         
         return createdMessage
     }
@@ -482,36 +439,23 @@ actor SupabaseService {
         
         let request = try await createAuthenticatedRequest(url: url, method: "GET")
         
-        print("🔍 [SupabaseService] Getting user profile...")
-        print("   - User ID: \(userId.uuidString)")
-        print("   - URL: \(url)")
-        
         let (data, response) = try await URLSession.shared.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
-            print("❌ [SupabaseService] Invalid HTTP response when getting profile")
             throw SupabaseError.requestFailed
         }
         
-        print("🔍 [SupabaseService] Get profile response status: \(httpResponse.statusCode)")
-        
         if httpResponse.statusCode == 401 {
-            print("❌ [SupabaseService] Unauthorized when getting profile")
             throw SupabaseError.unauthorized
         }
         
         guard (200...299).contains(httpResponse.statusCode) else {
-            let errorString = String(data: data, encoding: .utf8) ?? "Unknown error"
-            print("❌ [SupabaseService] Failed to get profile:")
-            print("   - Status Code: \(httpResponse.statusCode)")
-            print("   - Error: \(errorString)")
             throw SupabaseError.requestFailed
         }
         
         // Parse response
         if let jsonArray = try JSONSerialization.jsonObject(with: data) as? [[String: Any]],
            let profile = jsonArray.first {
-            print("✅ [SupabaseService] Profile found: \(profile)")
             let result = [
                 "first_name": profile["first_name"] as? String,
                 "last_name": profile["last_name"] as? String,
@@ -520,7 +464,6 @@ actor SupabaseService {
             return result
         }
         
-        print("ℹ️ [SupabaseService] No profile found (empty array)")
         return nil
     }
     
@@ -534,12 +477,9 @@ actor SupabaseService {
         
         if existingProfile == nil {
             // Chưa có profile → tạo mới
-            print("💾 [SupabaseService] User profile not found, creating new profile for user: \(userId.uuidString)")
-            
             // Thử gọi RPC function trước (nếu có)
             // Sử dụng lowercase để đảm bảo consistency
             if let rpcResult = try? await callRPCFunction(functionName: "create_user_profile_if_not_exists", params: ["p_user_id": userId.uuidString.lowercased()]) {
-                print("✅ [SupabaseService] User profile created via RPC function")
                 // Nếu có avatarURL, update sau
                 if let avatarURL = avatarURL {
                     try await saveUserProfile(
@@ -557,10 +497,7 @@ actor SupabaseService {
                     lastName: nil,
                     avatarURL: avatarURL
                 )
-                print("✅ [SupabaseService] User profile created successfully")
             }
-        } else {
-            print("ℹ️ [SupabaseService] User profile already exists for user: \(userId.uuidString)")
         }
     }
     
@@ -604,10 +541,6 @@ actor SupabaseService {
         // Kiểm tra xem profile đã tồn tại chưa
         let existingProfile = try? await getUserProfile(userId: userId)
         
-        print("💾 [SupabaseService] saveUserProfile called:")
-        print("   - User ID: \(userId.uuidString)")
-        print("   - Existing profile: \(existingProfile != nil ? "Found" : "Not found")")
-        
         // Chỉ thêm các field có giá trị (không gửi nil)
         // Sử dụng lowercase để đảm bảo consistency với DB
         var profileData: [String: Any] = [
@@ -650,49 +583,27 @@ actor SupabaseService {
             var request = try await createAuthenticatedRequest(url: url, method: "PATCH")
             request.httpBody = jsonData
             
-            print("💾 [SupabaseService] Updating user profile...")
-            print("   - User ID: \(userId.uuidString)")
-            print("   - URL: \(url)")
-            
             let (data, response): (Data, URLResponse)
             do {
                 (data, response) = try await URLSession.shared.data(for: request)
             } catch {
-                print("❌ [SupabaseService] Network error: \(error.localizedDescription)")
                 throw SupabaseError.requestFailed
             }
             
             guard let httpResponse = response as? HTTPURLResponse else {
-                print("❌ [SupabaseService] Invalid HTTP response")
                 throw SupabaseError.requestFailed
             }
             
-            print("💾 [SupabaseService] Update response status: \(httpResponse.statusCode)")
-            
             if httpResponse.statusCode == 401 {
-                print("❌ [SupabaseService] Unauthorized - token expired")
                 throw SupabaseError.unauthorized
             }
             
             guard (200...299).contains(httpResponse.statusCode) else {
-                let errorString = String(data: data, encoding: .utf8) ?? "Unknown error"
-                print("❌ [SupabaseService] Failed to update profile:")
-                print("   - Status Code: \(httpResponse.statusCode)")
-                print("   - Error: \(errorString)")
                 throw SupabaseError.requestFailed
             }
             
-            print("✅ [SupabaseService] User profile updated successfully")
-            
         } else {
             // Insert new profile
-            print("💾 [SupabaseService] Creating new user profile...")
-            print("   - User ID: \(userId.uuidString)")
-            print("   - First Name: \(firstName ?? "nil")")
-            print("   - Last Name: \(lastName ?? "nil")")
-            print("   - Avatar URL: \(avatarURL ?? "nil")")
-            print("   - Profile Data: \(profileData)")
-            
             guard let url = URL(string: "\(AppConfig.supabaseURL)/rest/v1/user_profiles") else {
                 throw SupabaseError.invalidURL
             }
@@ -701,55 +612,28 @@ actor SupabaseService {
             profileDataWithCreated["created_at"] = ISO8601DateFormatter().string(from: Date())
             let insertData = try JSONSerialization.data(withJSONObject: profileDataWithCreated)
             
-            // Log request data
-            if let jsonString = String(data: insertData, encoding: .utf8) {
-                print("💾 [SupabaseService] Insert data JSON: \(jsonString)")
-            }
-            
             var request = try await createAuthenticatedRequest(url: url, method: "POST")
             request.setValue("return=representation", forHTTPHeaderField: "Prefer")
             request.httpBody = insertData
-            
-            // Debug: Kiểm tra xem có Authorization header không
-            if let authHeader = request.value(forHTTPHeaderField: "Authorization") {
-                let tokenPreview = authHeader.prefix(20) + "..."
-                print("💾 [SupabaseService] Inserting user profile...")
-                print("   - URL: \(url)")
-                print("   - Authorization header: \(tokenPreview)")
-            } else {
-                print("⚠️ [SupabaseService] WARNING: No Authorization header found!")
-            }
             
             let (data, response): (Data, URLResponse)
             do {
                 (data, response) = try await URLSession.shared.data(for: request)
             } catch {
-                print("❌ [SupabaseService] Network error during insert: \(error.localizedDescription)")
-                print("   - Error details: \(error)")
                 throw SupabaseError.requestFailed
             }
             
             guard let httpResponse = response as? HTTPURLResponse else {
-                print("❌ [SupabaseService] Invalid HTTP response")
                 throw SupabaseError.requestFailed
             }
             
-            print("💾 [SupabaseService] Insert response status: \(httpResponse.statusCode)")
-            
             if httpResponse.statusCode == 401 {
-                print("❌ [SupabaseService] Unauthorized - token expired")
                 throw SupabaseError.unauthorized
             }
             
             guard (200...299).contains(httpResponse.statusCode) else {
-                let errorString = String(data: data, encoding: .utf8) ?? "Unknown error"
-                print("❌ [SupabaseService] Failed to insert profile:")
-                print("   - Status Code: \(httpResponse.statusCode)")
-                print("   - Error: \(errorString)")
                 throw SupabaseError.requestFailed
             }
-            
-            print("✅ [SupabaseService] User profile created successfully")
         }
     }
 }

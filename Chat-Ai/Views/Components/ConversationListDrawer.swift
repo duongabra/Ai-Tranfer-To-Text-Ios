@@ -43,7 +43,6 @@ struct ConversationListDrawer: View {
         .task(id: isPresented) {
             // ✅ Fetch lại conversations mỗi lần drawer được mở để có data mới nhất
             if isPresented {
-                print("🔄 [ConversationListDrawer] Drawer opened, refreshing conversations...")
                 await viewModel.loadConversations(forceRefresh: true)
             }
             

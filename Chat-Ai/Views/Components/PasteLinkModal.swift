@@ -362,10 +362,6 @@ struct PasteLinkModal: View {
                     userId: userId
                 )
                 
-                print("🔗 [PasteLinkModal] Transcription result:")
-                print("   - Transcription URL (S3): \(result.transcriptionURL)")
-                print("   - Message text length: \(result.message.count) characters")
-                
                 // Tạo conversation mới với title từ URL
                 let conversationTitle = extractTitleFromURL(linkText)
                 let newConversation = try await SupabaseService.shared.createConversation(title: conversationTitle)
@@ -381,8 +377,6 @@ struct PasteLinkModal: View {
                     fileSize: nil
                 )
                 
-                print("🔗 [PasteLinkModal] User message created: \(userMessage.id)")
-                
                 // Tạo assistant message với transcription
                 let transcriptionFileName = "transcript_\(Date().timeIntervalSince1970).txt"
                 let transcriptionMessage = try await SupabaseService.shared.createMessage(
@@ -395,8 +389,6 @@ struct PasteLinkModal: View {
                     fileSize: nil
                 )
                 
-                print("🔗 [PasteLinkModal] Transcription message created: \(transcriptionMessage.id)")
-                
                 // Update conversation timestamp
                 try await SupabaseService.shared.updateConversationTimestamp(conversationId: newConversation.id)
                 
@@ -407,7 +399,6 @@ struct PasteLinkModal: View {
                 }
                 
             } catch {
-                print("❌ [PasteLinkModal] Error: \(error.localizedDescription)")
                 await MainActor.run {
                     isLoading = false
                     status = .error("Failed to process video: \(error.localizedDescription)")
@@ -467,11 +458,10 @@ extension URL {
 // MARK: - Preview
 
 #Preview {
-    PasteLinkModal(
-        isPresented: .constant(true),
-        onTranscribeSuccess: { conversation in
-            print("Conversation created: \(conversation.id)")
-        },
+        PasteLinkModal(
+            isPresented: .constant(true),
+            onTranscribeSuccess: { conversation in
+            },
         isLoading: .constant(false)
     )
 }

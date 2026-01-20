@@ -337,13 +337,6 @@ struct ChatView: View {
                                                 )
                                                 .padding(.top, 12)
                                                 .id("file-download-card")
-                                                .onAppear {
-                                                    // Log khi card được hiển thị
-                                                    print("✅ [ChatView] Showing FileDownloadCard")
-                                                    print("   - Message ID: \(message.id)")
-                                                    print("   - S3 URL: \(fileUrl)")
-                                                    print("   - File Name: \(message.fileName ?? "transcript.txt")")
-                                                }
                                             }
                                         } else {
                                             // Nếu chưa mua gói: hiển thị Upgrade to Pro card
@@ -549,7 +542,6 @@ struct ChatView: View {
         if message.id == nextMessage.id && 
            message.attachment == nil &&
            message.content.count > 50 { // Transcription thường dài hơn 50 ký tự
-            print("🔍 [ChatView] Detect transcription message: id=\(message.id), content=\(message.content.prefix(50))...")
             return true
         }
         
@@ -1191,12 +1183,7 @@ struct FileDownloadCard: View {
     
     /// Download transcription file từ URL và save vào Files app
     private func downloadFile() {
-        print("📥 [FileDownloadCard] Starting download transcription file...")
-        print("   - URL: \(fileUrl)")
-        print("   - File name: \(fileName)")
-        
         guard let url = URL(string: fileUrl) else {
-            print("❌ [FileDownloadCard] Invalid URL: \(fileUrl)")
             return
         }
         
@@ -1208,7 +1195,6 @@ struct FileDownloadCard: View {
                 let (data, response) = try await URLSession.shared.data(from: url)
                 
                 guard let httpResponse = response as? HTTPURLResponse else {
-                    print("❌ [FileDownloadCard] Invalid HTTP response")
                     await MainActor.run {
                         isDownloading = false
                     }
@@ -1216,7 +1202,6 @@ struct FileDownloadCard: View {
                 }
                 
                 guard (200...299).contains(httpResponse.statusCode) else {
-                    print("❌ [FileDownloadCard] Failed to download file: HTTP \(httpResponse.statusCode)")
                     await MainActor.run {
                         isDownloading = false
                     }
@@ -1228,7 +1213,6 @@ struct FileDownloadCard: View {
                 let tempFile = tempDir.appendingPathComponent(fileName)
                 
                 try data.write(to: tempFile)
-                print("✅ [FileDownloadCard] File downloaded to temp: \(tempFile.path)")
                 
                 // Share file để user có thể save vào Files app
                 await MainActor.run {
@@ -1255,10 +1239,7 @@ struct FileDownloadCard: View {
                         rootViewController.present(activityVC, animated: true)
                     }
                 }
-                
-                print("✅ [FileDownloadCard] File download completed")
             } catch {
-                print("❌ [FileDownloadCard] Failed to download file: \(error.localizedDescription)")
                 await MainActor.run {
                     isDownloading = false
                 }

@@ -442,11 +442,7 @@ struct SettingsView: View {
     private func openURL(_ urlString: String) {
         guard let url = URL(string: urlString) else { return }
         // Mở trong Safari với options để đảm bảo link hoạt động
-        UIApplication.shared.open(url, options: [.universalLinksOnly: false]) { success in
-            if !success {
-                print("❌ [SettingsView] Failed to open URL: \(urlString)")
-            }
-        }
+        UIApplication.shared.open(url, options: [.universalLinksOnly: false])
     }
     
 }

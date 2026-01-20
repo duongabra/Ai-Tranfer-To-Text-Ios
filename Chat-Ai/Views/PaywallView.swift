@@ -392,11 +392,7 @@ struct PaywallView: View {
     private func openURL(_ urlString: String) {
         guard let url = URL(string: urlString) else { return }
         // Mở trong Safari với options để đảm bảo link hoạt động
-        UIApplication.shared.open(url, options: [.universalLinksOnly: false]) { success in
-            if !success {
-                print("❌ [PaywallView] Failed to open URL: \(urlString)")
-            }
-        }
+        UIApplication.shared.open(url, options: [.universalLinksOnly: false])
     }
     
     // MARK: - Load Plans
@@ -418,13 +414,6 @@ struct PaywallView: View {
                 expirationDate = subscriptionInfo.expirationDate
                 isSubscriptionCancelled = subscriptionInfo.isCancelled
                 nextPaymentDate = subscriptionInfo.expirationDate // Next payment = expiration date (khi auto-renew)
-                
-                // Log subscription status để test
-                print("📱 [PaywallView] Current subscription status:")
-                print("   - Product ID: \(subscriptionInfo.productId)")
-                print("   - Expiration Date: \(subscriptionInfo.expirationDate)")
-                print("   - Is Cancelled: \(subscriptionInfo.isCancelled)")
-                print("   - Next Payment Date: \(nextPaymentDate?.description ?? "none")")
                 
                 // Đánh dấu gói đang active
                 availablePlans = availablePlans.map { plan in
@@ -448,25 +437,20 @@ struct PaywallView: View {
                     selectedPlan = availablePlans.first(where: { $0.isPremium })
                 }
                 
-                print("📱 [PaywallView] Auto-selected: \(selectedPlan?.type ?? .free) (extend plan)")
             } else {
                 hasActiveSubscription = false
                 currentProductId = nil
                 expirationDate = nil
                 nextPaymentDate = nil
                 
-                print("📱 [PaywallView] No active subscription")
-                
                 // Auto-select Monthly (nếu chưa mua)
                 selectedPlan = availablePlans.first(where: { $0.type == .monthly })
-                print("📱 [PaywallView] Auto-selected: Monthly (no active subscription)")
             }
             
             isLoading = false
         } catch {
             let errorDesc = error.localizedDescription
             errorMessage = "Failed to load plans: \(errorDesc)"
-            print("❌ [PaywallView] Error loading plans: \(error)")
             isLoading = false
             
             // Nếu không có products, hiển thị message rõ ràng hơn
@@ -496,26 +480,12 @@ struct PaywallView: View {
                     return
                 }
                 
-                print("🛒 [PaywallView] Starting purchase...")
-                print("   - Product ID: \(product.id)")
-                print("   - Product Name: \(product.displayName)")
-                print("   - Price: \(product.displayPrice)")
                 
                 // Purchase qua StoreKit 2
                 try await StoreKitService.shared.purchase(product: product)
                 
-                print("✅ [PaywallView] Purchase successful!")
-                
                 // Check subscription status sau khi purchase
                 let newProductId = await StoreKitService.shared.getCurrentSubscriptionProductId()
-                print("📱 [PaywallView] Subscription status after purchase:")
-                print("   - Product ID: \(newProductId ?? "none")")
-                if let productId = newProductId {
-                    print("   - Plan: \(productId)")
-                } else {
-                    print("   - Plan: No active subscription (may need to wait for transaction to process)")
-                }
-                
                 // Refresh subscription status sau khi purchase
                 await SubscriptionViewModel.shared.refreshSubscriptionStatus()
                 
@@ -523,7 +493,6 @@ struct PaywallView: View {
                 dismiss() // Đóng paywall
                 
             } catch {
-                print("❌ [PaywallView] Purchase failed: \(error.localizedDescription)")
                 errorMessage = "Purchase failed: \(error.localizedDescription)"
                 isLoading = false
             }
@@ -533,8 +502,6 @@ struct PaywallView: View {
     // MARK: - Manage Plan Action
     
     private func managePlan() {
-        print("⚙️ [PaywallView] Opening manage subscriptions sheet...")
-        
         // Mở manage subscriptions sheet để user có thể quản lý subscription
         showManageSubscriptions = true
     }
@@ -542,8 +509,6 @@ struct PaywallView: View {
     // MARK: - Cancel Subscription Action
     
     private func cancelSubscription() {
-        print("🚫 [PaywallView] Opening manage subscriptions sheet...")
-        
         // Mở manage subscriptions sheet để user có thể cancel trực tiếp trong app
         showManageSubscriptions = true
     }

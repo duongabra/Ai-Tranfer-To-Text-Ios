@@ -40,13 +40,7 @@ class ChatViewModel: ObservableObject {
         errorMessage = nil
         
         do {
-            print("📥 [ChatViewModel] loadMessages() - Đang load messages từ DB...")
             messages = try await SupabaseService.shared.fetchMessages(conversationId: conversation.id)
-            
-            print("📥 [ChatViewModel] loadMessages() - Đã load \(messages.count) messages")
-            for (index, message) in messages.enumerated() {
-                print("📥 [ChatViewModel] Message \(index): role=\(message.role.rawValue), content=\(message.content.prefix(50))...")
-            }
         } catch {
             // ✅ Kiểm tra nếu là lỗi 401 Unauthorized → Logout
             if let supabaseError = error as? SupabaseError, supabaseError == .unauthorized {
@@ -84,12 +78,6 @@ class ChatViewModel: ObservableObject {
             
             // Bước 2: Gửi 9 message gần nhất đến AI để lấy context
             let recentMessages = Array(messages.suffix(9))
-            print("📤 [ChatViewModel] Sending messages to AI:")
-            print("   - Total messages in conversation: \(messages.count)")
-            print("   - Sending recent messages count: \(recentMessages.count)")
-            for (index, msg) in recentMessages.enumerated() {
-                print("   - Message \(index + 1): role=\(msg.role.rawValue), content=\(msg.content.prefix(50))...")
-            }
             let aiResponse = try await AIService.shared.sendMessage(messages: recentMessages)
             
             // Bước 3: Lưu phản hồi của AI vào database
@@ -188,24 +176,14 @@ class ChatViewModel: ObservableObject {
                     userId: userId
                 )
                 
-                print("🎵 [ChatViewModel] Transcription result:")
-                print("   - Transcription URL (S3): \(result.transcriptionURL)")
-                print("   - Message text length: \(result.message.count) characters")
-                
                 isTranscribing = false
                 transcriptionProgress = nil
                 
                 // ✅ Tạo message với message text và lưu transcription URL để download sau
-                print("🎵 [ChatViewModel] Tạo transcription message cho audio")
-                print("🎵 [ChatViewModel] Role: assistant")
-                print("🎵 [ChatViewModel] Content length: \(result.message.count)")
-                print("🎵 [ChatViewModel] Transcription URL (S3): \(result.transcriptionURL)")
-                
                 // Lưu transcription URL vào fileUrl để user có thể download sau
                 let transcriptionFileName = "transcript_\(Date().timeIntervalSince1970).txt"
                 
                 // Lưu vào Supabase với transcription URL
-                print("🎵 [ChatViewModel] Đang lưu transcription message vào DB với role: assistant")
                 let savedMessage = try await SupabaseService.shared.createMessage(
                     conversationId: conversation.id,
                     role: .assistant,
@@ -215,10 +193,6 @@ class ChatViewModel: ObservableObject {
                     fileType: "other",  // Transcription file là text file
                     fileSize: nil
                 )
-                
-                print("🎵 [ChatViewModel] Transcription message đã lưu vào DB")
-                print("🎵 [ChatViewModel] Saved message role từ DB: \(savedMessage.role.rawValue)")
-                print("🎵 [ChatViewModel] Saved message id: \(savedMessage.id)")
                 
                 messages.append(savedMessage)
                 
@@ -238,24 +212,14 @@ class ChatViewModel: ObservableObject {
                     userId: userId
                 )
                 
-                print("🎥 [ChatViewModel] Transcription result:")
-                print("   - Transcription URL (S3): \(result.transcriptionURL)")
-                print("   - Message text length: \(result.message.count) characters")
-                
                 isTranscribing = false
                 transcriptionProgress = nil
                 
                 // ✅ Tạo message với message text và lưu transcription URL để download sau
-                print("🎥 [ChatViewModel] Tạo transcription message cho video")
-                print("🎥 [ChatViewModel] Role: assistant")
-                print("🎥 [ChatViewModel] Content length: \(result.message.count)")
-                print("🎥 [ChatViewModel] Transcription URL (S3): \(result.transcriptionURL)")
-                
                 // Lưu transcription URL vào fileUrl để user có thể download sau
                 let transcriptionFileName = "transcript_\(Date().timeIntervalSince1970).txt"
                 
                 // Lưu vào Supabase với transcription URL
-                print("🎥 [ChatViewModel] Đang lưu transcription message vào DB với role: assistant")
                 let savedMessage = try await SupabaseService.shared.createMessage(
                     conversationId: conversation.id,
                     role: .assistant,
@@ -266,10 +230,6 @@ class ChatViewModel: ObservableObject {
                     fileSize: nil
                 )
                 
-                print("🎥 [ChatViewModel] Transcription message đã lưu vào DB")
-                print("🎥 [ChatViewModel] Saved message role từ DB: \(savedMessage.role.rawValue)")
-                print("🎥 [ChatViewModel] Saved message id: \(savedMessage.id)")
-                
                 messages.append(savedMessage)
                 
                 // ✅ DỪNG ở đây, KHÔNG gửi AI
@@ -279,12 +239,6 @@ class ChatViewModel: ObservableObject {
             } else if !messageContent.isEmpty && messageContent != "📎 Sent a file" {
                 // Chỉ có text → Dùng AI service thường với 9 message gần nhất
                 let recentMessages = Array(messages.suffix(9))
-                print("📤 [ChatViewModel] Sending messages with file to AI:")
-                print("   - Total messages in conversation: \(messages.count)")
-                print("   - Sending recent messages count: \(recentMessages.count)")
-                for (index, msg) in recentMessages.enumerated() {
-                    print("   - Message \(index + 1): role=\(msg.role.rawValue), content=\(msg.content.prefix(50))...")
-                }
                 aiResponse = try await AIService.shared.sendMessage(messages: recentMessages)
             } else {
                 // Không có gì để gửi AI

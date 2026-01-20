@@ -17,7 +17,9 @@ struct HomeView: View {
     
     // File picker states
     @State private var showingUploadModal = false
+    @State private var isUploadingFile = false
     @State private var showingPasteLinkModal = false
+    @State private var isPasteLinkLoading = false
     @State private var showingImageVideoPicker = false
     @State private var showingAudioPicker = false
     @State private var selectedFile: FileAttachment?
@@ -149,8 +151,8 @@ struct HomeView: View {
                 await checkSubscriptionStatus()
             }
         }
-        .overlay {
-            // Background blur overlay khi mở Upload File Modal
+        .overlay(alignment: .bottom) {
+            // Bottom sheet overlay khi mở Upload File Modal
             if showingUploadModal {
                 ZStack(alignment: .bottom) {
                     // Blur background
@@ -158,10 +160,13 @@ struct HomeView: View {
                         .ignoresSafeArea()
                         .background(.ultraThinMaterial)
                         .onTapGesture {
-                            // Không làm gì - chặn tap để đóng modal
+                            // Tap outside để đóng modal - chỉ khi không đang upload
+                            if !isUploadingFile {
+                                showingUploadModal = false
+                            }
                         }
                     
-                    // Upload File Modal
+                    // Bottom Sheet - sát với bottom
                     UploadFileModal(
                         isPresented: $showingUploadModal,
                         selectedFile: $selectedFile,
@@ -169,15 +174,21 @@ struct HomeView: View {
                         onTranscribeSuccess: { conversation in
                             // Navigate đến ChatView với conversation mới
                             navigationCoordinator.navigateToConversation(conversation)
-                        }
+                        },
+                        isUploading: $isUploadingFile
                     )
-                    .transition(.move(edge: .bottom))
+                    .frame(maxWidth: .infinity)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .bottom).combined(with: .opacity),
+                        removal: .move(edge: .bottom).combined(with: .opacity)
+                    ))
                     .zIndex(1000)
                 }
+                .ignoresSafeArea(edges: .bottom)
             }
         }
-        .overlay {
-            // Background blur overlay khi mở Paste Link Modal
+        .overlay(alignment: .bottom) {
+            // Bottom sheet overlay khi mở Paste Link Modal
             if showingPasteLinkModal {
                 ZStack(alignment: .bottom) {
                     // Blur background
@@ -185,20 +196,29 @@ struct HomeView: View {
                         .ignoresSafeArea()
                         .background(.ultraThinMaterial)
                         .onTapGesture {
-                            // Không làm gì - chặn tap để đóng modal
+                            // Tap outside để đóng modal - chỉ khi không đang loading
+                            if !isPasteLinkLoading {
+                                showingPasteLinkModal = false
+                            }
                         }
                     
-                    // Paste Link Modal
+                    // Bottom Sheet - sát với bottom
                     PasteLinkModal(
                         isPresented: $showingPasteLinkModal,
                         onTranscribeSuccess: { conversation in
                             // Navigate đến ChatView với conversation mới
                             navigationCoordinator.navigateToConversation(conversation)
-                        }
+                        },
+                        isLoading: $isPasteLinkLoading
                     )
-                    .transition(.move(edge: .bottom))
+                    .frame(maxWidth: .infinity)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .bottom).combined(with: .opacity),
+                        removal: .move(edge: .bottom).combined(with: .opacity)
+                    ))
                     .zIndex(1000)
                 }
+                .ignoresSafeArea(edges: .bottom)
             }
         }
             .overlay(alignment: .leading) {
@@ -322,7 +342,7 @@ struct HomeView: View {
                 backgroundColor: Color.primaryOrange.opacity(0.1),
                 iconColor: .primaryOrange
             ) {
-                // Hiển thị modal upload file
+                // Hiển thị modal upload file - update state ngay lập tức
                 showingUploadModal = true
             }
             
@@ -334,7 +354,7 @@ struct HomeView: View {
                 backgroundColor: Color(hex: "FF920A").opacity(0.1),
                 iconColor: Color(hex: "FF920A")
             ) {
-                // Hiển thị modal paste link
+                // Hiển thị modal paste link - update state ngay lập tức
                 showingPasteLinkModal = true
             }
         }
@@ -425,7 +445,9 @@ struct ActionCard: View {
     let action: () -> Void
     
     var body: some View {
-        Button(action: action) {
+        Button {
+            action()
+        } label: {
             VStack(spacing: 16) {
                 // Icon - sử dụng ảnh từ Assets
                 if icon == "upload_3_line" {

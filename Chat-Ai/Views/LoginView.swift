@@ -62,7 +62,7 @@ struct LoginView: View {
                                 await authViewModel.signInWithApple()
                             }
                         },
-                        isLoading: authViewModel.isLoading
+                        isLoading: authViewModel.isLoadingApple
                     )
                     
                     // Sign in with Google Button
@@ -74,7 +74,7 @@ struct LoginView: View {
                                 await authViewModel.signInWithGoogle()
                             }
                         },
-                        isLoading: authViewModel.isLoading
+                        isLoading: authViewModel.isLoadingGoogle
                     )
                     
                     // Error message

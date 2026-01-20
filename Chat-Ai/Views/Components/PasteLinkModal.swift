@@ -23,54 +23,98 @@ struct PasteLinkModal: View {
     // Callback khi transcribe thành công và tạo conversation xong
     var onTranscribeSuccess: ((Conversation) -> Void)?
     
+    // Expose loading status để parent view biết khi đang loading
+    @Binding var isLoading: Bool
+    
     @State private var linkText: String = ""
     @State private var status: PasteLinkStatus = .idle
-    @State private var isLoading = false
+    
+    @State private var dragOffset: CGFloat = 0
+    @State private var isDragging = false
     
     var body: some View {
-        if isPresented {
-            modalContent
-                .onAppear {
-                    resetState()
-                }
-        } else {
-            Color.clear
-                .onAppear {
-                    resetState()
-                }
-        }
-    }
-    
-    // MARK: - Modal Content
-    
-    private var modalContent: some View {
-        ZStack(alignment: .bottom) {
-            backgroundBlur
-            modalBody
-        }
-        .ignoresSafeArea(edges: .bottom)
-        .transition(.opacity)
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isPresented)
-    }
-    
-    private var backgroundBlur: some View {
-        Color.white.opacity(0.3)
-            .ignoresSafeArea(edges: .all)
-            .background(.ultraThinMaterial)
-            .onTapGesture {
-                // Không làm gì - chặn tap để đóng modal
-            }
-    }
-    
-    private var modalBody: some View {
         VStack(spacing: 0) {
+            // Drag handle
+            dragHandle
+            
+            // Header
             headerView
+            
+            // Content
             contentView
         }
         .background(Color(hex: "FAFAFA"))
         .cornerRadius(16, corners: [.topLeft, .topRight])
         .shadow(color: Color.black.opacity(0.1), radius: 32, x: 0, y: 0)
-        .transition(.move(edge: .bottom))
+        .offset(y: dragOffset)
+        .gesture(
+            DragGesture()
+                .onChanged { value in
+                    if !isLoading {
+                        isDragging = true
+                        if value.translation.height > 0 {
+                            dragOffset = value.translation.height
+                        }
+                    }
+                }
+                .onEnded { value in
+                    if !isLoading {
+                        isDragging = false
+                        if value.translation.height > 150 {
+                            // Swipe down để đóng
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                isPresented = false
+                            }
+                        } else {
+                            // Spring back
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                dragOffset = 0
+                            }
+                        }
+                    } else {
+                        // Spring back nếu đang loading
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            dragOffset = 0
+                        }
+                    }
+                }
+        )
+        .padding(.bottom, 0)
+        .ignoresSafeArea(edges: .bottom)
+        .onChange(of: status) { newStatus in
+            // Update binding khi status thay đổi
+            if case .loading = newStatus {
+                isLoading = true
+            } else {
+                isLoading = false
+            }
+        }
+        .onAppear {
+            resetState()
+            dragOffset = 0
+            // Update binding
+            if case .loading = status {
+                isLoading = true
+            } else {
+                isLoading = false
+            }
+        }
+        .onChange(of: isPresented) { newValue in
+            if !newValue {
+                // Reset drag offset khi đóng
+                dragOffset = 0
+            }
+        }
+    }
+    
+    // MARK: - Drag Handle
+    
+    private var dragHandle: some View {
+        RoundedRectangle(cornerRadius: 2.5)
+            .fill(Color.gray.opacity(0.4))
+            .frame(width: 36, height: 5)
+            .padding(.top, 8)
+            .padding(.bottom, 8)
     }
     
     private var headerView: some View {
@@ -405,7 +449,6 @@ struct PasteLinkModal: View {
     private func resetState() {
         linkText = ""
         status = .idle
-        isLoading = false
     }
 }
 
@@ -428,6 +471,7 @@ extension URL {
         isPresented: .constant(true),
         onTranscribeSuccess: { conversation in
             print("Conversation created: \(conversation.id)")
-        }
+        },
+        isLoading: .constant(false)
     )
 }

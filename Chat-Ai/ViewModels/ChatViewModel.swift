@@ -82,8 +82,15 @@ class ChatViewModel: ObservableObject {
             // Thêm message của user vào danh sách
             messages.append(userMessage)
             
-            // Bước 2: Gửi tất cả messages đến AI để lấy context
-            let aiResponse = try await AIService.shared.sendMessage(messages: messages)
+            // Bước 2: Gửi 9 message gần nhất đến AI để lấy context
+            let recentMessages = Array(messages.suffix(9))
+            print("📤 [ChatViewModel] Sending messages to AI:")
+            print("   - Total messages in conversation: \(messages.count)")
+            print("   - Sending recent messages count: \(recentMessages.count)")
+            for (index, msg) in recentMessages.enumerated() {
+                print("   - Message \(index + 1): role=\(msg.role.rawValue), content=\(msg.content.prefix(50))...")
+            }
+            let aiResponse = try await AIService.shared.sendMessage(messages: recentMessages)
             
             // Bước 3: Lưu phản hồi của AI vào database
             let assistantMessage = try await SupabaseService.shared.createMessage(
@@ -270,8 +277,15 @@ class ChatViewModel: ObservableObject {
                 isUploadingFile = false
                 return
             } else if !messageContent.isEmpty && messageContent != "📎 Sent a file" {
-                // Chỉ có text → Dùng AI service thường
-                aiResponse = try await AIService.shared.sendMessage(messages: messages)
+                // Chỉ có text → Dùng AI service thường với 9 message gần nhất
+                let recentMessages = Array(messages.suffix(9))
+                print("📤 [ChatViewModel] Sending messages with file to AI:")
+                print("   - Total messages in conversation: \(messages.count)")
+                print("   - Sending recent messages count: \(recentMessages.count)")
+                for (index, msg) in recentMessages.enumerated() {
+                    print("   - Message \(index + 1): role=\(msg.role.rawValue), content=\(msg.content.prefix(50))...")
+                }
+                aiResponse = try await AIService.shared.sendMessage(messages: recentMessages)
             } else {
                 // Không có gì để gửi AI
                 isSending = false

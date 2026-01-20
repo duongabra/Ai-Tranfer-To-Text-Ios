@@ -12,7 +12,9 @@ class AuthViewModel: ObservableObject {
     
     // @Published: Khi giá trị thay đổi → UI tự động update
     @Published var currentUser: User?           // User hiện tại (nil = chưa đăng nhập)
-    @Published var isLoading = false            // Đang xử lý đăng nhập?
+    @Published var isLoading = false            // Đang xử lý đăng nhập? (deprecated, dùng isLoadingApple/isLoadingGoogle)
+    @Published var isLoadingApple = false       // Đang xử lý đăng nhập với Apple?
+    @Published var isLoadingGoogle = false      // Đang xử lý đăng nhập với Google?
     @Published var errorMessage: String?        // Thông báo lỗi
     
     init() {
@@ -167,7 +169,8 @@ class AuthViewModel: ObservableObject {
     
     /// Đăng nhập với Apple
     func signInWithApple() async {
-        isLoading = true
+        isLoadingApple = true
+        isLoading = true // Giữ lại để backward compatibility
         errorMessage = nil
         
         do {
@@ -189,14 +192,16 @@ class AuthViewModel: ObservableObject {
             errorMessage = "Apple login failed: \(error.localizedDescription)"
         }
         
-        isLoading = false
+        isLoadingApple = false
+        isLoading = false // Giữ lại để backward compatibility
     }
     
     // MARK: - Sign In with Google
     
     /// Đăng nhập với Google
     func signInWithGoogle() async {
-        isLoading = true
+        isLoadingGoogle = true
+        isLoading = true // Giữ lại để backward compatibility
         errorMessage = nil
         
         do {
@@ -218,7 +223,8 @@ class AuthViewModel: ObservableObject {
             errorMessage = "Login failed: \(error.localizedDescription)"
         }
         
-        isLoading = false
+        isLoadingGoogle = false
+        isLoading = false // Giữ lại để backward compatibility
     }
     
     // MARK: - Sign Out

@@ -28,6 +28,9 @@ struct UploadFileModal: View {
     // Callback khi transcribe thành công và tạo conversation xong
     var onTranscribeSuccess: ((Conversation) -> Void)?
     
+    // Expose upload status để parent view biết khi đang upload
+    @Binding var isUploading: Bool
+    
     @State private var showingUnifiedPicker = false
     @State private var uploadStatus: UploadStatus = .idle
     @State private var uploadedFileURL: String? = nil
@@ -36,24 +39,31 @@ struct UploadFileModal: View {
     // Giới hạn file size: 300MB
     private let maxFileSize: Int64 = 300 * 1024 * 1024
     
+    @State private var dragOffset: CGFloat = 0
+    @State private var isDragging = false
+    
     var body: some View {
-        ZStack(alignment: .top) {
-            // Main content
-            VStack(spacing: 0) {
-                // Header
-                headerView
-                
-                // Content
-                VStack(spacing: 12) {
-                    statusContentView
-                    summarizeButton
-                }
-                .padding(.top, 8)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 32)
-            }
-            .background(Color(hex: "FAFAFA"))
+        VStack(spacing: 0) {
+            // Drag handle
+            dragHandle
             
+            // Header
+            headerView
+            
+            // Content
+            VStack(spacing: 12) {
+                statusContentView
+                summarizeButton
+            }
+            .padding(.top, 0)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 32)
+        }
+        .background(Color(hex: "FAFAFA"))
+        .cornerRadius(20, corners: [.topLeft, .topRight])
+        .shadow(color: Color.black.opacity(0.2), radius: 20, x: 0, y: -5)
+        .offset(y: dragOffset)
+        .overlay(alignment: .top) {
             // Toast message
             if let toast = toastMessage {
                 toastView(message: toast)
@@ -63,15 +73,51 @@ struct UploadFileModal: View {
                     .padding(.top, 16)
             }
         }
-        .interactiveDismissDisabled(isUploading)
+        .gesture(
+            DragGesture()
+                .onChanged { value in
+                    if !isUploadingComputed {
+                        isDragging = true
+                        if value.translation.height > 0 {
+                            dragOffset = value.translation.height
+                        }
+                    }
+                }
+                .onEnded { value in
+                    if !isUploadingComputed {
+                        isDragging = false
+                        if value.translation.height > 150 {
+                            // Swipe down để đóng
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                isPresented = false
+                            }
+                        } else {
+                            // Spring back
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                dragOffset = 0
+                            }
+                        }
+                    }
+                }
+        )
+        .onChange(of: uploadStatus) { newStatus in
+            // Update binding khi uploadStatus thay đổi
+            isUploading = (newStatus == .loading)
+        }
+        .padding(.bottom, 0)
+        .ignoresSafeArea(edges: .bottom)
         .onAppear {
             // Reset khi sheet được mở
+            dragOffset = 0
             if uploadStatus != .loading && uploadStatus != .success {
                 uploadStatus = .idle
             }
+            // Update binding
+            isUploading = (uploadStatus == .loading)
         }
         .onDisappear {
             // Reset khi sheet đóng (trừ khi đang navigate)
+            dragOffset = 0
             if uploadStatus != .success {
                 uploadStatus = .idle
                 uploadedFileURL = nil
@@ -91,15 +137,31 @@ struct UploadFileModal: View {
         .onChange(of: selectedFileData) { newData in
             handleDataChange(newData)
         }
+        .onChange(of: isPresented) { newValue in
+            if !newValue {
+                // Reset drag offset khi đóng
+                dragOffset = 0
+            }
+        }
     }
     
     // MARK: - Computed Properties
     
-    private var isUploading: Bool {
+    private var isUploadingComputed: Bool {
         if case .loading = uploadStatus {
             return true
         }
         return false
+    }
+    
+    // MARK: - Drag Handle
+    
+    private var dragHandle: some View {
+        RoundedRectangle(cornerRadius: 2.5)
+            .fill(Color.gray.opacity(0.4))
+            .frame(width: 36, height: 5)
+            .padding(.top, 8)
+            .padding(.bottom, 8)
     }
     
     // MARK: - Header View
@@ -814,6 +876,8 @@ struct RemoteFilePreviewView: View {
     UploadFileModal(
         isPresented: .constant(true),
         selectedFile: .constant(nil),
-        selectedFileData: .constant(nil)
+        selectedFileData: .constant(nil),
+        onTranscribeSuccess: nil,
+        isUploading: .constant(false)
     )
 }

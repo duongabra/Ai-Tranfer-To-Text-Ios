@@ -48,6 +48,17 @@ actor AIService {
             ]
         }
         
+        print("test log log10 : ========== SENDING TO AI API ==========")
+        print("test log log10 : API URL: \(AppConfig.groqAPIURL)")
+        print("test log log10 : Model: \(AppConfig.groqModel)")
+        print("test log log10 : Total messages: \(apiMessages.count)")
+        for (index, msg) in apiMessages.enumerated() {
+            let role = msg["role"] as? String ?? "unknown"
+            let content = msg["content"] as? String ?? ""
+            let contentPreview = content.count > 100 ? String(content.prefix(100)) + "..." : content
+            print("test log log10 :   [\(index + 1)] role=\(role), content_length=\(content.count), preview=\"\(contentPreview)\"")
+        }
+        
         // Tạo request body theo format của Groq API
         let requestBody: [String: Any] = [
             "model": AppConfig.groqModel,
@@ -59,6 +70,14 @@ actor AIService {
         ]
         
         let jsonData = try JSONSerialization.data(withJSONObject: requestBody)
+        
+        // Log request body size
+        print("test log log10 : Request body size: \(jsonData.count) bytes")
+        if let requestString = String(data: jsonData, encoding: .utf8) {
+            let previewLength = min(500, requestString.count)
+            print("test log log10 : Request body preview (first \(previewLength) chars): \(String(requestString.prefix(previewLength)))")
+        }
+        print("test log log10 : =======================================")
         
         // Tạo request
         var request = URLRequest(url: url)

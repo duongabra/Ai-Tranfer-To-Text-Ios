@@ -551,13 +551,22 @@ struct UploadFileModal: View {
                 
                 // Nếu là video hoặc audio → Transcribe
                 if file.type == .video || file.type == .audio {
+                    print("test log log10 : Starting upload and transcribe for file: \(file.name), type: \(file.type.rawValue)")
                     await MainActor.run {
                         uploadStatus = .loading
                     }
                     
-                    let userId = 8042467986
+                    // Lấy user_id thật từ user đã đăng nhập
+                    guard let currentUser = await AuthService.shared.getCurrentUser() else {
+                        throw TranscribeError.transcriptionFailed
+                    }
+                    let userId = currentUser.id.uuidString
+                    
+                    print("test log log10 : Using real user_id: \(userId)")
+                    
                     let result: TranscribeResult
                     
+                    // Transcribe (API sẽ tạo conversation và trả về conversation_id)
                     if file.type == .audio {
                         result = try await TranscribeService.shared.transcribeAudio(
                             audioData: data,
@@ -571,35 +580,81 @@ struct UploadFileModal: View {
                         )
                     }
                     
-                    // Tạo conversation
-                    let conversationTitle = (file.name as NSString).deletingPathExtension
-                    let newConversation = try await SupabaseService.shared.createConversation(title: conversationTitle)
+                    // Step 1: Lấy conversation_id và transcription_id từ API response
+                    guard let conversationIdString = result.conversationId,
+                          let conversationId = UUID(uuidString: conversationIdString) else {
+                        print("test log log10 : Error - No conversation_id in API response")
+                        throw TranscribeError.transcriptionFailed
+                    }
                     
-                    // Tạo user message
-                    _ = try await SupabaseService.shared.createMessage(
-                        conversationId: newConversation.id,
-                        role: .user,
-                        content: "📎 Sent a file",
-                        fileUrl: fileURL,
-                        fileName: file.name,
-                        fileType: file.type.rawValue,
-                        fileSize: data.count
+                    guard let transcriptionIdString = result.transcriptionId,
+                          let transcriptionId = UUID(uuidString: transcriptionIdString) else {
+                        print("test log log10 : Error - No transcription_id in API response")
+                        throw TranscribeError.transcriptionFailed
+                    }
+                    
+                    print("test log log10 : Step 1 - API transcribe thành công")
+                    print("test log log10 : Step 1 - conversation_id: \(conversationId)")
+                    print("test log log10 : Step 1 - transcription_id: \(transcriptionId)")
+                    
+                    // Step 2: Đợi một chút để đảm bảo conversation đã được tạo trong database
+                    try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 giây
+                    
+                    // Step 2: Lấy conversation từ database (API đã tạo conversation mới)
+                    print("test log log10 : Step 2 - Fetching conversation from database...")
+                    var newConversation: Conversation?
+                    var retryCount = 0
+                    let maxRetries = 5
+                    
+                    while retryCount < maxRetries && newConversation == nil {
+                        newConversation = try await SupabaseService.shared.fetchConversationById(conversationId: conversationId)
+                        if newConversation == nil {
+                            retryCount += 1
+                            print("test log log10 : Step 2 - Conversation not found, retry \(retryCount)/\(maxRetries)...")
+                            try? await Task.sleep(nanoseconds: 500_000_000) // Đợi 0.5 giây trước khi retry
+                        }
+                    }
+                    
+                    guard let conversation = newConversation else {
+                        print("test log log10 : Error - Conversation not found after \(maxRetries) retries")
+                        throw TranscribeError.transcriptionFailed
+                    }
+                    
+                    print("test log log10 : Step 2 - Conversation found: \(conversation.id), title: \(conversation.title)")
+                    
+                    // Step 3: Thêm transcription_id vào conversation
+                    print("test log log10 : Step 3 - Adding transcription_id to conversation...")
+                    try await SupabaseService.shared.updateConversationTranscriptionId(
+                        conversationId: conversationId,
+                        transcriptionId: transcriptionId
                     )
                     
-                    // Tạo assistant message với transcription
-                    let transcriptionFileName = "transcript_\(Date().timeIntervalSince1970).txt"
-                    _ = try await SupabaseService.shared.createMessage(
-                        conversationId: newConversation.id,
-                        role: .assistant,
-                        content: result.message,
-                        fileUrl: result.transcriptionURL,
-                        fileName: transcriptionFileName,
-                        fileType: "other",
-                        fileSize: nil
-                    )
+                    print("test log log10 : Step 3 - Successfully added transcription_id to conversation")
+                    
+                    // Step 4: Tạo assistant message với S3 link để user download transcript file
+                    print("test log log10 : Step 4 - Creating assistant message with S3 link...")
+                    let s3Link = result.s3Link ?? result.transcriptionURL
+                    if !s3Link.isEmpty {
+                        // Tạo tên file từ title hoặc dùng tên mặc định
+                        let fileName = result.title?.appending(".txt") ?? "transcript.txt"
+                        let messageContent = result.message ?? "Got it. I'm analyzing the video now. If you want, tell me your goal (learn the concept vs. just get highlights) and I'll tailor it."
+                        
+                        // Tạo assistant message với file attachment
+                        let assistantMessage = try await SupabaseService.shared.createMessage(
+                            conversationId: conversationId,
+                            role: .assistant,
+                            content: messageContent,
+                            fileUrl: s3Link,
+                            fileName: fileName,
+                            fileType: "other"
+                        )
+                        print("test log log10 : Step 4 - Created assistant message with S3 link: \(s3Link)")
+                    } else {
+                        print("test log log10 : Step 4 - Warning: No S3 link in response, skipping message creation")
+                    }
                     
                     // Cập nhật timestamp
-                    try await SupabaseService.shared.updateConversationTimestamp(conversationId: newConversation.id)
+                    try await SupabaseService.shared.updateConversationTimestamp(conversationId: conversationId)
                     
                     // Success và navigate
                     await MainActor.run {
@@ -610,7 +665,17 @@ struct UploadFileModal: View {
                             try? await Task.sleep(nanoseconds: 500_000_000)
                             await MainActor.run {
                                 isPresented = false
-                                onTranscribeSuccess?(newConversation)
+                                // Tạo conversation object với transcription_id đã được update
+                                let finalConversation = Conversation(
+                                    id: conversation.id,
+                                    userId: conversation.userId,
+                                    title: conversation.title,
+                                    createdAt: conversation.createdAt,
+                                    updatedAt: conversation.updatedAt,
+                                    transcriptionId: transcriptionId
+                                )
+                                print("test log log10 : Step 4 - Navigation to conversation with transcription_id")
+                                onTranscribeSuccess?(finalConversation)
                             }
                         }
                     }
@@ -620,11 +685,42 @@ struct UploadFileModal: View {
                         uploadStatus = .success
                     }
                 }
+            } catch let decodingError as DecodingError {
+                print("test log log10 : Upload file - DecodingError: \(decodingError)")
+                switch decodingError {
+                case .dataCorrupted(let context):
+                    print("test log log10 : Data corrupted: \(context.debugDescription)")
+                    print("test log log10 : Coding path: \(context.codingPath)")
+                case .keyNotFound(let key, let context):
+                    print("test log log10 : Key not found: \(key.stringValue)")
+                    print("test log log10 : Coding path: \(context.codingPath)")
+                    print("test log log10 : Context: \(context.debugDescription)")
+                case .typeMismatch(let type, let context):
+                    print("test log log10 : Type mismatch: \(type)")
+                    print("test log log10 : Coding path: \(context.codingPath)")
+                    print("test log log10 : Context: \(context.debugDescription)")
+                case .valueNotFound(let type, let context):
+                    print("test log log10 : Value not found: \(type)")
+                    print("test log log10 : Coding path: \(context.codingPath)")
+                    print("test log log10 : Context: \(context.debugDescription)")
+                @unknown default:
+                    print("test log log10 : Unknown decoding error")
+                }
+                await MainActor.run {
+                    uploadStatus = .failed("Failed to parse server response. Please try again.")
+                }
             } catch {
+                print("test log log10 : Upload file error: \(error.localizedDescription)")
+                print("test log log10 : Error type: \(type(of: error))")
+                if let transcribeError = error as? TranscribeError {
+                    print("test log log10 : Transcribe error: \(transcribeError.localizedDescription)")
+                }
                 await MainActor.run {
                     let errorMessage: String
                     if let storageError = error as? StorageError {
                         errorMessage = storageError.localizedDescription
+                    } else if let transcribeError = error as? TranscribeError {
+                        errorMessage = transcribeError.localizedDescription
                     } else {
                         errorMessage = error.localizedDescription
                     }

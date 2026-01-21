@@ -302,7 +302,7 @@ struct ChatView: View {
                                 // Tìm first assistant message từ filtered messages
                                 let firstAssistantMessage = filteredMessages.first(where: { $0.role == .assistant }) ?? filteredMessages.first(where: { isTranscriptionMessage($0) })
                                 
-                                ForEach(filteredMessages) { message in
+                                ForEach(Array(filteredMessages.enumerated()), id: \.element.id) { index, message in
                                     // Force hiển thị transcription message như assistant message
                                     let displayMessage = isTranscriptionMessage(message) 
                                         ? Message(
@@ -318,9 +318,20 @@ struct ChatView: View {
                                         )
                                         : message
                                     
+                                    // Xác định có phải là assistant message đầu tiên không (transcription message)
+                                    // Transcription message là assistant message đầu tiên hoặc có fileType == "other"
+                                    let isFirstAssistant: Bool = {
+                                        if let firstAssistant = firstAssistantMessage {
+                                            return displayMessage.id == firstAssistant.id || displayMessage.fileType == "other"
+                                        } else {
+                                            return displayMessage.role == .assistant && index == 0
+                                        }
+                                    }()
+                                    
                                     MessageBubble(
                                         message: displayMessage,
-                                        isFirstUserFile: isFirstUserFileMessage(message)
+                                        isFirstUserFile: isFirstUserFileMessage(message),
+                                        isFirstAssistantMessage: isFirstAssistant
                                     )
                                     .id(message.id)
                                     
@@ -871,6 +882,7 @@ struct VideoUploadedCard: View {
 struct MessageBubble: View {
     let message: Message
     let isFirstUserFile: Bool
+    let isFirstAssistantMessage: Bool  // Message đầu tiên (transcription) - ẩn copy icon
     @State private var showCopiedFeedback = false
     
     var body: some View {
@@ -907,14 +919,16 @@ struct MessageBubble: View {
                     }
                     .frame(maxWidth: botMessageMaxWidth, alignment: .leading)
                     
-                    // Actions icon (copy) - chỉ hiển thị cho assistant messages
-                    HStack(spacing: 8) {
-                        Button(action: {
-                            copyToClipboard(message.content)
-                        }) {
-                            Image(showCopiedFeedback ? "check_line" : "copy_icon")
-                                .resizable()
-                                .frame(width: 16, height: 16)
+                    // Actions icon (copy) - chỉ hiển thị cho assistant messages, ẩn ở message đầu tiên
+                    if !isFirstAssistantMessage {
+                        HStack(spacing: 8) {
+                            Button(action: {
+                                copyToClipboard(message.content)
+                            }) {
+                                Image(showCopiedFeedback ? "check_line" : "copy_icon")
+                                    .resizable()
+                                    .frame(width: 16, height: 16)
+                            }
                         }
                     }
                 }

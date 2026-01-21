@@ -84,15 +84,18 @@ actor SupabaseService {
     }
     
     /// Tạo một conversation mới
-    /// - Parameter title: Tiêu đề của conversation
+    /// - Parameters:
+    ///   - title: Tiêu đề của conversation
+    ///   - transcriptionId: ID của transcription (optional)
     /// - Returns: Conversation vừa tạo
-    func createConversation(title: String) async throws -> Conversation {
+    func createConversation(title: String, transcriptionId: UUID? = nil) async throws -> Conversation {
         let userId = AppConfig.getCurrentUserId()
         
         // Tạo conversation object mới
         let newConversation = Conversation(
             userId: userId,
-            title: title
+            title: title,
+            transcriptionId: transcriptionId
         )
         
         // URL để insert vào table conversations
@@ -139,6 +142,159 @@ actor SupabaseService {
         }
         
         return createdConversation
+    }
+    
+    /// Lấy conversation theo ID cụ thể
+    /// - Parameter conversationId: ID của conversation cần lấy
+    /// - Returns: Conversation hoặc nil nếu không tìm thấy
+    func fetchConversationById(conversationId: UUID) async throws -> Conversation? {
+        print("test log log10 : Fetching conversation by ID: \(conversationId)")
+        guard let url = URL(string: "\(AppConfig.supabaseURL)/rest/v1/conversations?id=eq.\(conversationId.uuidString)") else {
+            throw SupabaseError.invalidURL
+        }
+        
+        let request = try await createAuthenticatedRequest(url: url, method: "GET")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SupabaseError.requestFailed
+        }
+        
+        if httpResponse.statusCode == 401 {
+            throw SupabaseError.unauthorized
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            print("test log log10 : Failed to fetch conversation, status code: \(httpResponse.statusCode)")
+            if let errorString = String(data: data, encoding: .utf8) {
+                print("test log log10 : Error response: \(errorString)")
+            }
+            throw SupabaseError.requestFailed
+        }
+        
+        // Log raw JSON để debug user_id format
+        if let jsonString = String(data: data, encoding: .utf8) {
+            print("test log log10 : Raw JSON response from Supabase: \(jsonString)")
+        }
+        
+        // Thử parse như dictionary để xem structure
+        if let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+           let firstConversation = jsonArray.first {
+            print("test log log10 : Conversation keys: \(firstConversation.keys.joined(separator: ", "))")
+            if let userId = firstConversation["user_id"] {
+                print("test log log10 : user_id value: \(userId), type: \(type(of: userId))")
+            }
+        }
+        
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let conversations = try decoder.decode([Conversation].self, from: data)
+        
+        if let conversation = conversations.first {
+            print("test log log10 : Found conversation: \(conversation.id), title: \(conversation.title)")
+            return conversation
+        } else {
+            print("test log log10 : Conversation not found in database")
+            return nil
+        }
+    }
+    
+    /// Cập nhật transcription_id cho conversation
+    /// - Parameters:
+    ///   - conversationId: ID của conversation
+    ///   - transcriptionId: ID của transcription
+    func updateConversationTranscriptionId(conversationId: UUID, transcriptionId: UUID) async throws {
+        print("test log log10 : Step 3 - Updating conversation \(conversationId) with transcription_id: \(transcriptionId)")
+        guard let url = URL(string: "\(AppConfig.supabaseURL)/rest/v1/conversations?id=eq.\(conversationId.uuidString)") else {
+            throw SupabaseError.invalidURL
+        }
+        
+        let updateData: [String: Any] = [
+            "transcription_id": transcriptionId.uuidString
+        ]
+        
+        let jsonData = try JSONSerialization.data(withJSONObject: updateData)
+        
+        var request = try await createAuthenticatedRequest(url: url, method: "PATCH")
+        request.httpBody = jsonData
+        
+        let (_, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SupabaseError.requestFailed
+        }
+        
+        if httpResponse.statusCode == 401 {
+            throw SupabaseError.unauthorized
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            print("test log log10 : Failed to update conversation transcription_id, status code: \(httpResponse.statusCode)")
+            throw SupabaseError.requestFailed
+        }
+        
+        print("test log log10 : Step 3 - Successfully updated conversation transcription_id")
+    }
+    
+    /// Lấy transcription content từ bảng transcriptions
+    /// - Parameter transcriptionId: ID của transcription
+    /// - Returns: Content của transcription hoặc nil nếu không tìm thấy
+    func getTranscriptionContent(transcriptionId: UUID) async throws -> String? {
+        let queryURL = "\(AppConfig.supabaseURL)/rest/v1/transcriptions?transcription_id=eq.\(transcriptionId.uuidString)"
+        print("test log log10 : ========== QUERY TRANSCRIPTION CONTENT ==========")
+        print("test log log10 : Query URL: \(queryURL)")
+        print("test log log10 : Transcription ID: \(transcriptionId)")
+        
+        guard let url = URL(string: queryURL) else {
+            throw SupabaseError.invalidURL
+        }
+        
+        let request = try await createAuthenticatedRequest(url: url, method: "GET")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SupabaseError.requestFailed
+        }
+        
+        if httpResponse.statusCode == 401 {
+            throw SupabaseError.unauthorized
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            print("test log log10 : Failed to get transcription content, status code: \(httpResponse.statusCode)")
+            if let errorString = String(data: data, encoding: .utf8) {
+                print("test log log10 : Error response: \(errorString)")
+            }
+            throw SupabaseError.requestFailed
+        }
+        
+        // Parse response
+        if let jsonArray = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+            print("test log log10 : Found \(jsonArray.count) transcription record(s)")
+            if let transcription = jsonArray.first,
+               let content = transcription["content"] as? String {
+                print("test log log10 : ✅ Transcription content retrieved successfully")
+                print("test log log10 : Content length: \(content.count) characters")
+                print("test log log10 : Content preview (first 200 chars): \(String(content.prefix(200)))")
+                print("test log log10 : ==========================================")
+                return content
+            } else {
+                print("test log log10 : ❌ Transcription record found but no content field")
+                if let transcription = jsonArray.first {
+                    print("test log log10 : Record keys: \(transcription.keys.joined(separator: ", "))")
+                }
+            }
+        } else {
+            print("test log log10 : ❌ No transcription records found")
+            if let rawString = String(data: data, encoding: .utf8) {
+                print("test log log10 : Raw response: \(rawString)")
+            }
+        }
+        
+        print("test log log10 : ==========================================")
+        return nil
     }
     
     /// Xóa một conversation

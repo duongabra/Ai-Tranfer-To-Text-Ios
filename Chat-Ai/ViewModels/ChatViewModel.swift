@@ -80,27 +80,6 @@ class ChatViewModel: ObservableObject {
             print("test log log10 : ========== PREPARING MESSAGES FOR AI ==========")
             var messagesToSend: [Message] = []
             
-            // Nếu conversation có transcription_id, lấy transcription content
-            if let transcriptionId = conversation.transcriptionId {
-                print("test log log10 : ✅ Found transcription_id: \(transcriptionId)")
-                if let transcriptionContent = try? await SupabaseService.shared.getTranscriptionContent(transcriptionId: transcriptionId) {
-                    print("test log log10 : ✅ Transcription content retrieved, length: \(transcriptionContent.count) characters")
-                    // Tạo message từ transcription content
-                    let transcriptionMessage = Message(
-                        conversationId: conversation.id,
-                        role: .assistant,
-                        content: transcriptionContent,
-                        createdAt: conversation.createdAt
-                    )
-                    messagesToSend.append(transcriptionMessage)
-                    print("test log log10 : ✅ Added transcription message to send list (index 0)")
-                } else {
-                    print("test log log10 : ❌ Failed to get transcription content")
-                }
-            } else {
-                print("test log log10 : ⚠️ No transcription_id in conversation")
-            }
-            
             // Thêm 9 messages gần nhất (filter bỏ transcription file messages - fileType == "other")
             let filteredMessages = messages.filter { message in
                 // Bỏ qua message có fileType == "other" (transcription file để download)
@@ -110,6 +89,29 @@ class ChatViewModel: ObservableObject {
             print("test log log10 : 📝 Filtered messages: \(filteredMessages.count) (from total \(messages.count) messages)")
             print("test log log10 : 📝 Recent messages count: \(recentMessages.count) (excluding transcription file messages)")
             messagesToSend.append(contentsOf: recentMessages)
+            
+            // Nếu conversation có transcription_id, lấy transcription content và thêm vào đầu (như assistant message đầu tiên)
+            // Transcription content sẽ được gửi như một assistant message trong conversation history
+            if let transcriptionId = conversation.transcriptionId {
+                print("test log log10 : ✅ Found transcription_id: \(transcriptionId)")
+                if let transcriptionContent = try? await SupabaseService.shared.getTranscriptionContent(transcriptionId: transcriptionId) {
+                    print("test log log10 : ✅ Transcription content retrieved, length: \(transcriptionContent.count) characters")
+                    // Tạo message từ transcription content và thêm vào đầu danh sách
+                    // Đảm bảo transcription content là assistant message đầu tiên
+                    let transcriptionMessage = Message(
+                        conversationId: conversation.id,
+                        role: .assistant,
+                        content: transcriptionContent,
+                        createdAt: conversation.createdAt
+                    )
+                    messagesToSend.insert(transcriptionMessage, at: 0)
+                    print("test log log10 : ✅ Added transcription message to send list (index 0)")
+                } else {
+                    print("test log log10 : ❌ Failed to get transcription content")
+                }
+            } else {
+                print("test log log10 : ⚠️ No transcription_id in conversation")
+            }
             
             // Gửi lên AI (tổng tối đa 10 items: 1 transcription + 9 messages)
             print("test log log10 : 📤 Total messages to send to AI: \(messagesToSend.count)")

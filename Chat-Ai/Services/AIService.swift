@@ -15,58 +15,80 @@ actor AIService {
     private init() {}
     
     /// Gửi tin nhắn đến AI và nhận phản hồi
-    /// - Parameter messages: Mảng các message trong conversation (để AI có context)
+    /// - Parameters:
+    ///   - messages: Mảng các message trong conversation (để AI có context)
+    ///   - image: Image data (not supported)
     /// - Returns: Nội dung phản hồi từ AI
     func sendMessage(messages: [Message], image: Data? = nil) async throws -> String {
-        // Kiểm tra xem đã có API key chưa
-        guard !AppConfig.aiAPIKey.isEmpty else {
-            throw AIError.missingAPIKey
-        }
-        
-        // ⚠️ Groq không hỗ trợ xử lý ảnh
+        // ⚠️ Image không được hỗ trợ
         if image != nil {
             throw AIError.imageNotSupported
         }
         
-        // ✅ Dùng Groq (chỉ hỗ trợ text)
-        return try await sendToGroq(messages: messages)
+        // ✅ Dùng Chat API mới
+        return try await sendToChatAPI(messages: messages)
     }
     
-    // MARK: - Groq API
+    // MARK: - Chat API
     
-    /// Gửi message đến Groq API
-    private func sendToGroq(messages: [Message]) async throws -> String {
-        guard let url = URL(string: AppConfig.groqAPIURL) else {
+    /// Gửi message đến Chat API mới
+    /// - Parameter messages: Mảng các message trong conversation
+    /// - Returns: Nội dung phản hồi từ AI
+    /// - Note: Messages phải alternate: user, assistant, user, assistant...
+    ///         Message cuối cùng phải là user message (current_user_msg)
+    private func sendToChatAPI(messages: [Message]) async throws -> String {
+        // Lấy user_id từ AuthService
+        guard let currentUser = await AuthService.shared.getCurrentUser() else {
+            throw AIError.requestFailed
+        }
+        let userId = currentUser.id.uuidString
+        
+        // Tạo URL cho Chat API (dùng cùng base URL với transcribe API)
+        guard let url = URL(string: "\(AppConfig.transcribeAPIURL)/chat") else {
             throw AIError.invalidURL
         }
         
-        // Chuyển đổi Message model sang format của API
-        let apiMessages = messages.map { message in
-            return [
-                "role": message.role.rawValue,
-                "content": message.content
-            ]
+        // Chuyển đổi Message model sang format của API: array of strings (alternating user/assistant)
+        // Format theo spec: [user_msg1, assistant_msg1, user_msg2, assistant_msg2, ..., current_user_msg]
+        // Messages phải alternate: user, assistant, user, assistant...
+        // Message cuối cùng phải là user message
+        var messagesArray: [String] = []
+        
+        // Kiểm tra và đảm bảo messages alternate đúng và message cuối cùng là user
+        var adjustedMessages = messages
+        
+        // Kiểm tra message cuối cùng có phải là user không
+        if let lastMessage = adjustedMessages.last, lastMessage.role != .user {
+            print("test log log10 : ⚠️ Last message is not user (role: \(lastMessage.role.rawValue)), API expects current_user_msg to be user")
         }
         
-        print("test log log10 : ========== SENDING TO AI API ==========")
-        print("test log log10 : API URL: \(AppConfig.groqAPIURL)")
-        print("test log log10 : Model: \(AppConfig.groqModel)")
-        print("test log log10 : Total messages: \(apiMessages.count)")
-        for (index, msg) in apiMessages.enumerated() {
-            let role = msg["role"] as? String ?? "unknown"
-            let content = msg["content"] as? String ?? ""
+        // Kiểm tra message đầu tiên
+        if let firstMessage = adjustedMessages.first {
+            print("test log log10 : First message role: \(firstMessage.role.rawValue)")
+        }
+        
+        // Chuyển đổi messages theo đúng thứ tự alternating
+        for message in adjustedMessages {
+            messagesArray.append(message.content)
+        }
+        
+        print("test log log10 : ========== SENDING TO CHAT API ==========")
+        print("test log log10 : API URL: \(url.absoluteString)")
+        print("test log log10 : User ID: \(userId)")
+        print("test log log10 : Total messages: \(messagesArray.count)")
+        print("test log log10 : Expected format: [user_msg1, assistant_msg1, user_msg2, assistant_msg2, ..., current_user_msg]")
+        for (index, content) in messagesArray.enumerated() {
             let contentPreview = content.count > 100 ? String(content.prefix(100)) + "..." : content
-            print("test log log10 :   [\(index + 1)] role=\(role), content_length=\(content.count), preview=\"\(contentPreview)\"")
+            // Log actual role từ Message object để debug
+            let actualRole = index < adjustedMessages.count ? adjustedMessages[index].role.rawValue : "unknown"
+            let expectedRole = index % 2 == 0 ? "user" : "assistant" // Even index = user, odd = assistant
+            print("test log log10 :   [\(index + 1)] role=\(actualRole) (expected: \(expectedRole)), content_length=\(content.count), preview=\"\(contentPreview)\"")
         }
         
-        // Tạo request body theo format của Groq API
+        // Tạo request body theo format của Chat API (chỉ có user_id và messages)
         let requestBody: [String: Any] = [
-            "model": AppConfig.groqModel,
-            "messages": apiMessages,
-            "temperature": 0.7,      // Độ "sáng tạo" của AI (0.0 - 2.0)
-            "max_tokens": 1024,      // Số token tối đa trong response
-            "top_p": 1,
-            "stream": false          // Không dùng streaming (nhận response một lần)
+            "user_id": userId,
+            "messages": messagesArray
         ]
         
         let jsonData = try JSONSerialization.data(withJSONObject: requestBody)
@@ -77,12 +99,11 @@ actor AIService {
             let previewLength = min(500, requestString.count)
             print("test log log10 : Request body preview (first \(previewLength) chars): \(String(requestString.prefix(previewLength)))")
         }
-        print("test log log10 : =======================================")
+        print("test log log10 : =========================================")
         
         // Tạo request
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("Bearer \(AppConfig.aiAPIKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = jsonData
         
@@ -94,22 +115,29 @@ actor AIService {
             throw AIError.requestFailed
         }
         
+        print("test log log10 : HTTP status code: \(httpResponse.statusCode)")
+        
         if !(200...299).contains(httpResponse.statusCode) {
             if let errorString = String(data: data, encoding: .utf8) {
+                print("test log log10 : Error response: \(errorString)")
             }
             throw AIError.requestFailed
         }
         
-        // Parse response JSON
+        // Parse response JSON theo format mới: { "success": true, "response": "string", "message": "string" }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let choices = json["choices"] as? [[String: Any]],
-              let firstChoice = choices.first,
-              let message = firstChoice["message"] as? [String: Any],
-              let content = message["content"] as? String else {
+              let success = json["success"] as? Bool,
+              success == true,
+              let responseText = json["response"] as? String else {
+            print("test log log10 : Invalid response format")
+            if let rawString = String(data: data, encoding: .utf8) {
+                print("test log log10 : Raw response: \(rawString)")
+            }
             throw AIError.invalidResponse
         }
         
-        return content
+        print("test log log10 : ✅ Chat API response received, length: \(responseText.count) characters")
+        return responseText
     }
     
     // MARK: - OpenAI API

@@ -48,14 +48,6 @@ class AuthViewModel: ObservableObject {
             
             // Chỉ set currentUser SAU KHI đã load đầy đủ thông tin từ DB
             currentUser = updatedUser
-            
-            // Preload avatar image ngay khi có avatarURL
-            if let avatarURL = updatedUser.avatarURL, !avatarURL.isEmpty, let url = URL(string: avatarURL) {
-                Task {
-                    await ImageCacheService.shared.preloadImage(url: url)
-                }
-            }
-            
         }
     }
     
@@ -69,20 +61,12 @@ class AuthViewModel: ObservableObject {
             }
             
             
-            // Load avatarURL từ DB
             let avatarURL = profile["avatar_url"] as? String
-            
-            // Cập nhật user object với avatarURL từ DB
-            let oldAvatarURL = user.avatarURL
+            let firstName = profile["first_name"] as? String
+            let lastName = profile["last_name"] as? String
             user.avatarURL = avatarURL
-            
-            // Preload avatar image ngay khi có avatarURL
-            if let avatarURL = avatarURL, !avatarURL.isEmpty, let url = URL(string: avatarURL) {
-                Task {
-                    await ImageCacheService.shared.preloadImage(url: url)
-                }
-            }
-            
+            user.firstName = firstName
+            user.lastName = lastName
         } catch {
         }
     }
@@ -106,22 +90,21 @@ class AuthViewModel: ObservableObject {
             }
             
             
-            // Load avatarURL từ DB
             let avatarURL = profile["avatar_url"] as? String
-            
-            // Cập nhật currentUser với avatarURL từ DB
+            let firstName = profile["first_name"] as? String
+            let lastName = profile["last_name"] as? String
+
             if var user = currentUser, user.id == userId {
-                let oldAvatarURL = user.avatarURL
                 user.avatarURL = avatarURL
+                user.firstName = firstName
+                user.lastName = lastName
                 currentUser = user
-            } else {
-                // Nếu currentUser chưa có, lấy từ AuthService và set
-                if let basicUser = await AuthService.shared.getCurrentUser(), basicUser.id == userId {
-                    var updatedUser = basicUser
-                    updatedUser.avatarURL = avatarURL
-                    currentUser = updatedUser
-                } else {
-                }
+            } else if let basicUser = await AuthService.shared.getCurrentUser(), basicUser.id == userId {
+                var updatedUser = basicUser
+                updatedUser.avatarURL = avatarURL
+                updatedUser.firstName = firstName
+                updatedUser.lastName = lastName
+                currentUser = updatedUser
             }
         } catch {
         }

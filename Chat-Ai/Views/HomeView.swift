@@ -2,509 +2,296 @@
 //  HomeView.swift
 //  Chat-Ai
 //
-//  Màn hình Home sau khi login
+//  Màn Home - AI Lipstick Swatching (UI theo Figma node 55367-1228)
 //
 
 import SwiftUI
 
+private enum HomeConstants {
+    /// Before (trái) – ảnh chưa son
+    static let placeholderBeforeImageURL = "https://static.wikia.nocookie.net/meangirls/images/2/27/Amanda_Seyfried.jpg/revision/latest?cb=20240901225458"
+    /// After (phải) – ảnh đã thử son (placeholder: có thể thay URL thật)
+    static let placeholderAfterImageURL = "https://static.wikia.nocookie.net/meangirls/images/2/27/Amanda_Seyfried.jpg/revision/latest?cb=20240901225458"
+    static let cardCornerRadius: CGFloat = 12
+    static let badgeBlur: CGFloat = 8
+}
+
+// MARK: - Mock data cho Recent Swatches (theo Figma)
+private struct SwatchItem: Identifiable {
+    let id = UUID()
+    let brand: String
+    let timeAgo: String
+    let productName: String
+    let colorName: String
+    let colorHex: Color
+}
+
 struct HomeView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
-    
-    @StateObject private var navigationCoordinator = NavigationCoordinator()
-    
-    @State private var hasActiveSubscription = false
-    @State private var isLoadingSubscription = true
-    
-    // File picker states
-    @State private var showingUploadModal = false
-    @State private var isUploadingFile = false
-    @State private var showingPasteLinkModal = false
-    @State private var isPasteLinkLoading = false
-    @State private var showingImageVideoPicker = false
-    @State private var showingAudioPicker = false
-    @State private var selectedFile: FileAttachment?
-    @State private var selectedFileData: Data?
-    
-    // Conversation list drawer state
-    @State private var showingConversationListDrawer = false
-    
-    // Settings state
-    @State private var showingSettings = false
-    
+
+    /// Tên hiển thị: ưu tiên last_name, không có thì first_name, không có cả hai thì "Beauty"
+    private var greetingName: String {
+        guard let user = authViewModel.currentUser else { return "Beauty" }
+        let first = (user.firstName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let last = (user.lastName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !last.isEmpty { return last }
+        if !first.isEmpty { return first }
+        return "Beauty"
+    }
+
+    private static let recentSwatches: [SwatchItem] = [
+        SwatchItem(brand: "MAC", timeAgo: "2 days ago", productName: "Silky Matte Lipstick", colorName: "Get The Hint", colorHex: Color(hex: "D55560")),
+        SwatchItem(brand: "DIOR", timeAgo: "3 days ago", productName: "Rouge Dior On Stage", colorName: "425 Wild Rosewood", colorHex: Color(hex: "910904")),
+        SwatchItem(brand: "YSL", timeAgo: "4 days ago", productName: "Candy Glaze Lip Gloss Stick", colorName: "14 - Scenic Brown", colorHex: Color(hex: "9D3B39")),
+        SwatchItem(brand: "CHANEL", timeAgo: "5 days ago", productName: "Rough Coco Baume", colorName: "920 In Love", colorHex: Color(hex: "CA878D"))
+    ]
+
     var body: some View {
-        Group {
-            if #available(iOS 16.0, *) {
-                navigationStackView
-            } else {
-                navigationViewCompat
-            }
-        }
-    }
-    
-    @available(iOS 16.0, *)
-    private var navigationStackView: some View {
-        NavigationStack(path: navigationCoordinator.navigationPathBinding) {
-            mainContent
-                .navigationDestination(for: PaywallDestination.self) { _ in
-                    PaywallView()
-                        .onDisappear {
-                            Task {
-                                try? await Task.sleep(nanoseconds: 500_000_000)
-                                await checkSubscriptionStatus()
-                            }
-                        }
-                }
-                .navigationDestination(for: Conversation.self) { conversation in
-                    ChatView(conversation: conversation)
-                        .environmentObject(navigationCoordinator)
-                }
-        }
-    }
-    
-    private var navigationViewCompat: some View {
-        NavigationView {
-            mainContent
-                .background(
-                    NavigationLink(
-                        destination: destinationView,
-                        isActive: Binding(
-                            get: { navigationCoordinator.currentDestination != nil },
-                            set: { if !$0 { navigationCoordinator.currentDestination = nil } }
-                        )
-                    ) {
-                        EmptyView()
-                    }
-                )
-        }
-        .navigationViewStyle(StackNavigationViewStyle())
-        .sheet(isPresented: $navigationCoordinator.showingPaywall) {
-            PaywallView()
-                .onDisappear {
-                    Task {
-                        try? await Task.sleep(nanoseconds: 500_000_000)
-                        await checkSubscriptionStatus()
-                    }
-                }
-        }
-    }
-    
-    @ViewBuilder
-    private var destinationView: some View {
-        if let destination = navigationCoordinator.currentDestination {
-            switch destination {
-            case .conversation(let conversation):
-                ChatView(conversation: conversation)
-                    .environmentObject(navigationCoordinator)
-            case .paywall:
-                PaywallView()
-            }
-        } else {
-            EmptyView()
-        }
-    }
-    
-    private var mainContent: some View {
-        ZStack(alignment: .bottom) {
-            // Background - màu trắng #FFF
+        ZStack {
             Color.white
                 .ignoresSafeArea()
-            
-            VStack(spacing: 0) {
-                // Header
-                homeHeader
-                
-                // Content
-                ScrollView {
-                    VStack(spacing: 32) {
-                        // Placeholder image (sẽ thêm ảnh sau)
-                        ImagePlaceholder
-                        
-                        // Title Section
-                        titleSection
-                        
-                        // Action Cards
-                        actionCardsSection
-                        
-                        // Spacer để tạo khoảng trống cho graphic
-                        Spacer()
-                            .frame(height: 300)
-                    }
-                    .padding(.top, 80)
-                    .padding(.horizontal, 0)
+
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 20) {
+                    // MARK: - Header (Hi + subtitle, avatar tap → Paywall)
+                    headerSection
+
+                    // MARK: - Main card (image Before/After + title + Start Swatching)
+                    mainCardSection
+
+                    // MARK: - Recent Swatches
+                    recentSwatchesSection
                 }
-            }
-            
-            // Graphic decoration ở cuối màn hình (fixed position)
-            VStack {
-                Spacer()
-                HomeGraphicView()
-                    .frame(maxWidth: .infinity)
-            }
-            .ignoresSafeArea(edges: .bottom)
-        }
-        .task {
-            await checkSubscriptionStatus()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-            // Refresh subscription status khi app quay lại foreground
-            Task {
-                await checkSubscriptionStatus()
+                .padding(.horizontal, 16)
+                .padding(.bottom, 100)
             }
         }
-        .overlay(alignment: .bottom) {
-            // Bottom sheet overlay khi mở Upload File Modal
-            if showingUploadModal {
-                ZStack(alignment: .bottom) {
-                    // Blur background
-                    Color.black.opacity(0.3)
-                        .ignoresSafeArea()
-                        .background(.ultraThinMaterial)
-                        .onTapGesture {
-                            // Tap outside để đóng modal - chỉ khi không đang upload
-                            if !isUploadingFile {
-                                showingUploadModal = false
-                            }
-                        }
-                    
-                    // Bottom Sheet - sát với bottom
-                    UploadFileModal(
-                        isPresented: $showingUploadModal,
-                        selectedFile: $selectedFile,
-                        selectedFileData: $selectedFileData,
-                        onTranscribeSuccess: { conversation in
-                            // Navigate đến ChatView với conversation mới
-                            navigationCoordinator.navigateToConversation(conversation)
-                        },
-                        isUploading: $isUploadingFile
-                    )
-                    .frame(maxWidth: .infinity)
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .bottom).combined(with: .opacity),
-                        removal: .move(edge: .bottom).combined(with: .opacity)
-                    ))
-                    .zIndex(1000)
-                }
-                .ignoresSafeArea(edges: .bottom)
-            }
-        }
-        .overlay(alignment: .bottom) {
-            // Bottom sheet overlay khi mở Paste Link Modal
-            if showingPasteLinkModal {
-                ZStack(alignment: .bottom) {
-                    // Blur background
-                    Color.black.opacity(0.3)
-                        .ignoresSafeArea()
-                        .background(.ultraThinMaterial)
-                        .onTapGesture {
-                            // Tap outside để đóng modal - chỉ khi không đang loading
-                            if !isPasteLinkLoading {
-                                showingPasteLinkModal = false
-                            }
-                        }
-                    
-                    // Bottom Sheet - sát với bottom
-                    PasteLinkModal(
-                        isPresented: $showingPasteLinkModal,
-                        onTranscribeSuccess: { conversation in
-                            // Navigate đến ChatView với conversation mới
-                            navigationCoordinator.navigateToConversation(conversation)
-                        },
-                        isLoading: $isPasteLinkLoading
-                    )
-                    .frame(maxWidth: .infinity)
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .bottom).combined(with: .opacity),
-                        removal: .move(edge: .bottom).combined(with: .opacity)
-                    ))
-                    .zIndex(1000)
-                }
-                .ignoresSafeArea(edges: .bottom)
-            }
-        }
-            .overlay(alignment: .leading) {
-                // Conversation List Drawer
-                ConversationListDrawer(
-                    isPresented: $showingConversationListDrawer,
-                    navigationCoordinator: navigationCoordinator,
-                    onConversationSelected: { conversation in
-                        navigationCoordinator.navigateToConversation(conversation)
-                    },
-                    onHomeSelected: {
-                        navigationCoordinator.navigateToHome()
-                    },
-                    onSettingsSelected: {
-                        showingSettings = true
-                    }
-                )
-            }
-            .environmentObject(navigationCoordinator)
-            .overlay(alignment: .bottom) {
-                if showingSettings {
-                    SettingsView(isPresented: $showingSettings)
-                        .environmentObject(authViewModel)
-                        .environmentObject(navigationCoordinator)
-                        .transition(.move(edge: .bottom))
-                        .zIndex(1000)
-                }
-            }
-            .sheet(isPresented: $showingImageVideoPicker) {
-            FilePicker(
-                selectedFile: $selectedFile,
-                selectedData: $selectedFileData,
-                fileTypes: [.image, .video]
-            )
-            .onDisappear {
-                // Xử lý file sau khi chọn
-                if let file = selectedFile, let data = selectedFileData {
-                    handleFileSelected(file: file, data: data)
-                }
-            }
-        }
-        .sheet(isPresented: $showingAudioPicker) {
-            AudioPicker(
-                selectedFile: $selectedFile,
-                selectedData: $selectedFileData
-            )
-            .onDisappear {
-                // Xử lý file sau khi chọn
-                if let file = selectedFile, let data = selectedFileData {
-                    handleFileSelected(file: file, data: data)
-                }
-            }
-        }
+        .navigationBarHidden(true)
     }
-    
+
     // MARK: - Header
-    
-    private var homeHeader: some View {
-        HStack {
-            // Menu icon (3 gạch ngang)
-            Button(action: {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    showingConversationListDrawer = true
-                }
-            }) {
-                MenuIcon()
-                    .frame(width: 40, height: 40)
+    private var headerSection: some View {
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Hi, \(greetingName)! 👋")
+                    .font(.custom("Overused Grotesk", size: 28).weight(.regular))
+                    .foregroundColor(Color(hex: "020202"))
+                    .lineSpacing(36 - 28)
+
+                Text("Which swatch do you wanna today?")
+                    .font(.custom("Overused Grotesk", size: 16).weight(.regular))
+                    .foregroundColor(Color(hex: "6A7282"))
+                    .lineSpacing(24 - 16)
             }
-            
-            Spacer()
-            
-            // Subscription Badge - Clickable
-            Button(action: {
-                navigationCoordinator.navigateToPaywall()
-            }) {
-                SubscriptionBadge(isPro: hasActiveSubscription)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Avatar từ Supabase user_profiles.avatar_url; bấm vào → Paywall
+            NavigationLink(destination: PaywallView()) {
+                avatarView
             }
             .buttonStyle(PlainButtonStyle())
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 16)
+        .padding(16)
+        .padding(.horizontal, 0)
     }
-    
-    // MARK: - Image Placeholder
-    
-    private var ImagePlaceholder: some View {
-        Image("Logo")
-            .resizable()
-            .scaledToFit()
-            .frame(width: 80, height: 80)
-    }
-    
-    // MARK: - Title Section
-    
-    private var titleSection: some View {
-        VStack(spacing: 8) {
-            Text("Welcome to VidSum")
-                .font(.headingLarge)
-                .lineSpacing(36 - 28) // line-height 36px - font-size 28px = 8px
-                .foregroundColor(.textPrimary)
-                .multilineTextAlignment(.center)
-            
-            Text("Upload a video or audio file, or paste a YouTube/X link to get started")
-                .font(.bodyMedium)
-                .lineSpacing(19.6 - 14) // line-height 19.6px - font-size 14px = 5.6px
-                .foregroundColor(.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-        }
-    }
-    
-    // MARK: - Action Cards Section
-    
-    private var actionCardsSection: some View {
-        HStack(spacing: 16) {
-            // Upload File Card
-            ActionCard(
-                icon: "upload_3_line",
-                title: "Upload File",
-                subtitle: "Upload Audio or Video",
-                backgroundColor: Color.primaryOrange.opacity(0.1),
-                iconColor: .primaryOrange
-            ) {
-                // Hiển thị modal upload file - update state ngay lập tức
-                showingUploadModal = true
-            }
-            
-            // Paste Link Card
-            ActionCard(
-                icon: "link_2_line",
-                title: "Paste Link",
-                subtitle: "YouTube or X video URL",
-                backgroundColor: Color(hex: "FF920A").opacity(0.1),
-                iconColor: Color(hex: "FF920A")
-            ) {
-                // Hiển thị modal paste link - update state ngay lập tức
-                showingPasteLinkModal = true
+
+    /// Avatar lấy từ Supabase: bảng user_profiles, cột avatar_url (load qua AuthViewModel.loadUserInfoFromDB).
+    private var avatarView: some View {
+        Group {
+            if let urlString = authViewModel.currentUser?.avatarURL,
+               !urlString.isEmpty,
+               let url = URL(string: urlString) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:
+                        ProgressView()
+                            .frame(width: 40, height: 40)
+                    case .success(let img):
+                        img
+                            .resizable()
+                            .scaledToFill()
+                    case .failure:
+                        Image(systemName: "person.circle.fill")
+                            .font(.system(size: 40))
+                            .foregroundColor(Color(hex: "6A7282"))
+                    @unknown default:
+                        Color(hex: "E4E4E4")
+                    }
+                }
+                .frame(width: 40, height: 40)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
+            } else {
+                // Chưa có avatar_url trong Supabase hoặc đang load
+                Image(systemName: "person.circle.fill")
+                    .font(.system(size: 40))
+                    .foregroundColor(Color(hex: "6A7282"))
             }
         }
-        .padding(.horizontal, 16)
+        .frame(width: 40, height: 40)
     }
-    
-    // MARK: - Helper Methods
-    
-    private func checkSubscriptionStatus() async {
-        isLoadingSubscription = true
-    
-        // TẠM THỜI: Check subscription từ StoreKit 2
-        let currentProductId = await StoreKitService.shared.getCurrentSubscriptionProductId()
-        hasActiveSubscription = (currentProductId != nil)
-        
-        isLoadingSubscription = false
-    }
-    
-    // MARK: - Handle File Selected
-    
-    private func handleFileSelected(file: FileAttachment, data: Data) {
-        
-        // TODO: Xử lý file đã chọn
-        // Có thể:
-        // 1. Navigate đến ChatView với file đã chọn
-        // 2. Upload file lên server
-        // 3. Hiển thị preview và xử lý
-        
-        // Reset sau khi xử lý
-        selectedFile = nil
-        selectedFileData = nil
-    }
-}
 
-// MARK: - Subscription Badge
-
-struct SubscriptionBadge: View {
-    let isPro: Bool
-    
-    var body: some View {
-        if isPro {
-            // Pro Badge - Crown trắng trên nền cam
-            HStack(spacing: 4) {
-                Text("Pro")
-                    .font(.labelMedium)
-                    .foregroundColor(.white)
-                
-                Image("VIP_2_fill")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 14, height: 14)
+    // MARK: - Main card: w = 1/2 provider (mỗi nửa ảnh), h = w (chiều cao khối = nửa width)
+    private var mainCardSection: some View {
+        VStack(alignment: .center, spacing: 0) {
+            GeometryReader { geo in
+                let totalW = geo.size.width
+                let w = totalW / 2   // mỗi nửa rộng 1/2 provider
+                let h = w            // h = w
+                ZStack(alignment: .top) {
+                    imageRow(height: h)
+                    HStack {
+                        badgeLabel(text: "Before")
+                        Spacer()
+                        badgeLabel(text: "After")
+                    }
+                    .padding(8)
+                }
+                .frame(width: totalW, height: h)
+                .clipped()
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(Color.primaryOrange)
+            .aspectRatio(2, contentMode: .fit)
+
+            // Title + button (cách khối ảnh 16px, có padding bên dưới)
+            VStack(spacing: 12) {
+                Text("Try On Any Lipsticks")
+                    .font(.custom("Overused Grotesk", size: 24).weight(.regular))
+                    .foregroundColor(Color(hex: "101828"))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(32 - 24)
+
+                NavigationLink(destination: SwatchUploadView()) {
+                    HStack(spacing: 8) {
+                        Image("lipstick_icon")
+                            .renderingMode(.template)
+                            .foregroundColor(Color(hex: "F9FAFB"))
+                            .frame(width: 20, height: 20)
+                            .clipped()
+                        Text("Start Swatching")
+                            .font(.custom("Overused Grotesk", size: 16).weight(.medium))
+                    }
+                    .foregroundColor(Color(hex: "F9FAFB"))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .padding(.leading, 10)
+                    .padding(.trailing, 20)
+                    .background(Color(hex: "030712"))
+                    .cornerRadius(9999)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+            .padding(.top, 16)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
+        }
+        .background(Color.black.opacity(0.03))
+        .cornerRadius(HomeConstants.cardCornerRadius)
+    }
+
+    /// Hai ảnh chia đôi: mỗi nửa w = 1/2 provider, h = w; cách nhau 1px trắng
+    private func imageRow(height: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            halfImage(urlString: HomeConstants.placeholderBeforeImageURL, height: height)
+            Color.white.frame(width: 1)
+            halfImage(urlString: HomeConstants.placeholderAfterImageURL, height: height)
+        }
+        .frame(height: height)
+        .cornerRadius(HomeConstants.cardCornerRadius)
+    }
+
+    private func halfImage(urlString: String, height: CGFloat) -> some View {
+        Group {
+            if let url = URL(string: urlString) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let img):
+                        img.resizable().scaledToFill()
+                    default:
+                        Color(hex: "E4E4E4")
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: height)
+                .clipped()
+            }
+        }
+    }
+
+    private func badgeLabel(text: String) -> some View {
+        Text(text)
+            .font(.custom("Overused Grotesk", size: 11).weight(.medium))
+            .foregroundColor(Color(hex: "101828"))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(.ultraThinMaterial)
             .cornerRadius(9999)
-        } else {
-            // Upgrade Badge - Crown cam trên nền trắng
-            HStack(spacing: 4) {
-                Text("Upgrade")
-                    .font(.labelMedium)
-                    .foregroundColor(.primaryOrange)
-                
-                Image(systemName: "crown.fill")
-                    .font(.custom("Overused Grotesk", size: 14))
-                    .foregroundColor(.primaryOrange)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(Color.primaryOrange.opacity(0.1))
             .overlay(
                 RoundedRectangle(cornerRadius: 9999)
-                    .stroke(Color.primaryOrange.opacity(0.2), lineWidth: 1)
+                    .stroke(Color.white.opacity(0.3), lineWidth: 1)
             )
-            .cornerRadius(9999)
-        }
     }
-}
 
-// MARK: - Action Card
+    // MARK: - Recent Swatches
+    private var recentSwatchesSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Recent Swatches")
+                .font(.custom("Overused Grotesk", size: 18).weight(.medium))
+                .foregroundColor(Color(hex: "364153"))
+                .lineSpacing(28 - 18)
 
-struct ActionCard: View {
-    let icon: String
-    let title: String
-    let subtitle: String
-    let backgroundColor: Color
-    let iconColor: Color
-    let action: () -> Void
-    
-    var body: some View {
-        Button {
-            action()
-        } label: {
             VStack(spacing: 16) {
-                // Icon - sử dụng ảnh từ Assets
-                if icon == "upload_3_line" {
-                    Image("upload")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 48, height: 48)
-                } else if icon == "link_2_line" {
-                    Image("paste_link")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 48, height: 48)
-                } else {
-                    Image(systemName: "doc")
-                        .font(.custom("Overused Grotesk", size: 24))
-                        .foregroundColor(iconColor)
-                        .frame(width: 48, height: 48)
-                        .background(iconColor.opacity(0.1))
-                        .clipShape(Circle())
+                HStack(alignment: .top, spacing: 16) {
+                    ForEach(Array(HomeView.recentSwatches.prefix(2))) { item in
+                        swatchCard(item: item)
+                    }
                 }
-                
-                // Text
-                VStack(spacing: 4) {
-                    Text(title)
-                        .font(.labelLarge)
-                        .lineSpacing(28 - 18) // line-height 28px - font-size 18px = 10px
-                        .foregroundColor(.textPrimary)
-                        .lineLimit(1)
-                        .multilineTextAlignment(.center)
-                    
-                    Text(subtitle)
-                        .font(.custom("Overused Grotesk", size: 13))
-                        .fontWeight(.regular)
-                        .lineSpacing(3) // line-height 16px - font-size 13px = 3px
-                        .foregroundColor(Color(red: 113/255, green: 113/255, blue: 113/255))
-                        .lineLimit(1)
-                        .multilineTextAlignment(.center)
-                        .textCase(nil)
-                        .monospacedDigit()
+                HStack(alignment: .top, spacing: 16) {
+                    ForEach(Array(HomeView.recentSwatches.suffix(2))) { item in
+                        swatchCard(item: item)
+                    }
                 }
             }
-            .frame(maxWidth: .infinity)
-            .padding(16)
-            .background(backgroundColor)
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(Color.black.opacity(0.05), lineWidth: 1)
-            )
-            .cornerRadius(16)
         }
-        .buttonStyle(PlainButtonStyle())
+    }
+
+    private func swatchCard(item: SwatchItem) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(item.brand)
+                    .font(.custom("Overused Grotesk", size: 12).weight(.medium))
+                    .foregroundColor(Color(hex: "6A7282"))
+                Spacer()
+                Text(item.timeAgo)
+                    .font(.custom("Overused Grotesk", size: 11).weight(.regular))
+                    .foregroundColor(Color(hex: "9CA3AF"))
+            }
+            Text(item.productName)
+                .font(.custom("Overused Grotesk", size: 14).weight(.medium))
+                .foregroundColor(Color(hex: "101828"))
+                .lineLimit(2)
+            HStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(item.colorHex)
+                    .frame(width: 12, height: 12)
+                Text(item.colorName)
+                    .font(.custom("Overused Grotesk", size: 12).weight(.regular))
+                    .foregroundColor(Color(hex: "6A7282"))
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white)
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color(hex: "E4E4E4"), lineWidth: 1)
+        )
     }
 }
 
-// MARK: - Preview
-
 #Preview {
-    HomeView()
+    NavigationView {
+        HomeView()
+            .environmentObject(AuthViewModel())
+    }
 }
-

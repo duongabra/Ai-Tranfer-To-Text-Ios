@@ -66,6 +66,8 @@ struct ImagePicker: UIViewControllerRepresentable {
     }
     let source: Source
     @Binding var image: UIImage?
+    /// When true and source is camera, use front camera (selfie). Default false = rear camera.
+    var useFrontCamera: Bool = false
     @Environment(\.dismiss) private var dismiss
 
     func makeUIViewController(context: Context) -> UIImagePickerController {
@@ -77,6 +79,11 @@ struct ImagePicker: UIViewControllerRepresentable {
             picker.sourceType = .photoLibrary
         case .camera:
             picker.sourceType = .camera
+            if useFrontCamera, UIImagePickerController.isCameraDeviceAvailable(.front) {
+                picker.cameraDevice = .front
+            } else if !useFrontCamera, UIImagePickerController.isCameraDeviceAvailable(.rear) {
+                picker.cameraDevice = .rear
+            }
         }
         return picker
     }
@@ -120,6 +127,7 @@ struct SwatchStep1View: View {
     @State private var pickingForSlot: Int = 1
     @State private var step1ShowingState3 = false
     @State private var step1ShowingState4 = false
+    @State private var step1ShowingFirstPhotoReview = false
     @State private var state3UploadError: String?
     @State private var showUploadErrorAlert = false
 
@@ -142,12 +150,15 @@ struct SwatchStep1View: View {
             Color.white.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                if step1ShowingState4 || !step1ShowingState3 {
+                if step1ShowingState4 || !step1ShowingState3 || step1ShowingFirstPhotoReview {
                     step1ModalHeader
                 }
 
                 if step1ShowingState4 {
                     step1State4Content
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if step1ShowingFirstPhotoReview {
+                    step1FirstPhotoReviewContent
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView(showsIndicators: false) {
@@ -194,6 +205,15 @@ struct SwatchStep1View: View {
         } message: {
             Text(state3UploadError ?? "")
         }
+        .onChange(of: showingCamera) { isShowing in
+            if !isShowing {
+                if pickingForSlot == 1, lipstickImage1 != nil {
+                    step1ShowingFirstPhotoReview = true
+                } else if pickingForSlot == 2 {
+                    step1ShowingFirstPhotoReview = false
+                }
+            }
+        }
         .onDisappear {
             mockTimer?.invalidate()
             mockTimer = nil
@@ -212,11 +232,14 @@ struct SwatchStep1View: View {
     // MARK: - Modal Header
     private var step1ModalHeader: some View {
         HStack(alignment: .center, spacing: 24) {
-            if (step1State2 && !step1ShowingState3) || step1ShowingState4 {
+            if (step1State2 && !step1ShowingState3) || step1ShowingState4 || step1ShowingFirstPhotoReview {
                 Button(action: {
                     if step1ShowingState4 {
                         step1ShowingState4 = false
                         step1ShowingState3 = false
+                    } else if step1ShowingFirstPhotoReview {
+                        lipstickImage1 = nil
+                        step1ShowingFirstPhotoReview = false
                     } else {
                         retakePhotos()
                     }
@@ -380,6 +403,56 @@ struct SwatchStep1View: View {
         .frame(maxWidth: .infinity)
     }
 
+    // MARK: - First photo review (màn trung gian — Figma 55397-53688)
+    private var step1FirstPhotoReviewContent: some View {
+        VStack(alignment: .center, spacing: 24) {
+            if let img = lipstickImage1 {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 479)
+                    .clipped()
+                    .cornerRadius(20)
+            }
+            VStack(spacing: 12) {
+                Button(action: {
+                    pickingForSlot = 2
+                    showingCamera = true
+                }) {
+                    Text("Take one more")
+                        .font(.custom("Overused Grotesk", size: 16).weight(.medium))
+                        .foregroundColor(Color(hex: "F9FAFB"))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 20)
+                        .background(Color(hex: "030712"))
+                        .cornerRadius(9999)
+                }
+                .buttonStyle(PlainButtonStyle())
+                Button(action: {
+                    lipstickImage1 = nil
+                    step1ShowingFirstPhotoReview = false
+                }) {
+                    Text("Retake photo")
+                        .font(.custom("Overused Grotesk", size: 16).weight(.medium))
+                        .foregroundColor(Color(hex: "101828"))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 20)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 9999)
+                                .stroke(Color(hex: "101828"), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+            .padding(.horizontal, 24)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 20)
+    }
+
     // MARK: - State 2: Confirm your photos
     private var step1State2Content: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -442,6 +515,7 @@ struct SwatchStep1View: View {
         lipstickImageURL2 = nil
         step1ShowingState3 = false
         step1ShowingState4 = false
+        step1ShowingFirstPhotoReview = false
         mockTimer?.invalidate()
         mockProgressTotal = 0
     }
@@ -520,19 +594,16 @@ struct SwatchStep1View: View {
                 state3ProgressRow(
                     label: "Detecting the brand logo",
                     progress: min(1, mockProgressTotal / 33.33),
-                    percent: min(33, Int(mockProgressTotal)),
                     isActive: mockProgressTotal > 0
                 )
                 state3ProgressRow(
                     label: "Identifying the product line",
                     progress: min(1, max(0, (mockProgressTotal - 33.33) / 33.33)),
-                    percent: min(33, max(0, Int(mockProgressTotal - 33.33))),
                     isActive: mockProgressTotal > 33.33
                 )
                 state3ProgressRow(
                     label: "Reading shade name",
                     progress: min(1, max(0, (mockProgressTotal - 66.66) / 33.34)),
-                    percent: min(34, max(0, Int(mockProgressTotal - 66.66))),
                     isActive: mockProgressTotal > 66.66
                 )
             }
@@ -699,15 +770,16 @@ struct SwatchStep1View: View {
         }
     }
 
-    private func state3ProgressRow(label: String, progress: CGFloat, percent: Int, isActive: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private func state3ProgressRow(label: String, progress: CGFloat, isActive: Bool) -> some View {
+        let stepPercent = min(100, Int(progress * 100))
+        return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(label)
                     .font(.custom("Overused Grotesk", size: 14).weight(.regular))
                     .foregroundColor(isActive ? Color(hex: "101828") : Color(hex: "6A7282"))
                     .lineLimit(1)
                 Spacer(minLength: 8)
-                Text("\(percent)%")
+                Text("\(stepPercent)%")
                     .font(.custom("Overused Grotesk", size: 14).weight(.regular))
                     .foregroundColor(isActive ? Color(hex: "101828") : Color(hex: "6A7282"))
             }

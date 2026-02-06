@@ -57,7 +57,7 @@ struct SwatchStep2View: View {
         }
         .navigationBarHidden(true)
         .fullScreenCover(isPresented: $showingCamera) {
-            ImagePicker(source: .camera, image: $faceImage)
+            ImagePicker(source: .camera, image: $faceImage, useFrontCamera: true)
                 .ignoresSafeArea()
         }
         .fullScreenCover(isPresented: $showingLibrary) {
@@ -286,7 +286,7 @@ struct SwatchStep2View: View {
                         .scaledToFit()
                         .foregroundColor(step2State4LikeDislike == true ? Color(hex: "F9FAFB") : Color(hex: "030712"))
                         .frame(width: 13, height: 13)
-                        .frame(width: 44, height: 44)
+                        .frame(width: 28, height: 28)
                         .background(step2State4LikeDislike == true ? Color(hex: "030712") : Color.white)
                         .overlay(Circle().stroke(step2State4LikeDislike == true ? Color.clear : Color(hex: "030712"), lineWidth: 1))
                         .cornerRadius(9999)
@@ -299,7 +299,7 @@ struct SwatchStep2View: View {
                         .scaledToFit()
                         .foregroundColor(step2State4LikeDislike == false ? Color(hex: "F9FAFB") : Color(hex: "030712"))
                         .frame(width: 16, height: 16)
-                        .frame(width: 44, height: 44)
+                        .frame(width: 28, height: 28)
                         .background(step2State4LikeDislike == false ? Color(hex: "030712") : Color.white)
                         .overlay(Circle().stroke(step2State4LikeDislike == false ? Color.clear : Color(hex: "030712"), lineWidth: 1))
                         .cornerRadius(9999)
@@ -647,25 +647,21 @@ struct SwatchStep2View: View {
                     step2State3ProgressRow(
                         label: "Detecting lips & shape",
                         progress: min(1, step2MockProgress / 25),
-                        percent: min(100, Int(step2MockProgress)),
                         isActive: step2MockProgress > 0
                     )
                     step2State3ProgressRow(
                         label: "Applying the shade",
                         progress: min(1, max(0, (step2MockProgress - 25) / 25)),
-                        percent: step2MockProgress > 25 ? min(100, Int(step2MockProgress)) : 0,
                         isActive: step2MockProgress > 25
                     )
                     step2State3ProgressRow(
                         label: "Blending for a natural finish",
                         progress: min(1, max(0, (step2MockProgress - 50) / 25)),
-                        percent: step2MockProgress > 50 ? min(100, Int(step2MockProgress)) : 0,
                         isActive: step2MockProgress > 50
                     )
                     step2State3ProgressRow(
                         label: "Finalizing your swatch",
                         progress: min(1, max(0, (step2MockProgress - 75) / 25)),
-                        percent: step2MockProgress > 75 ? min(100, Int(step2MockProgress)) : 0,
                         isActive: step2MockProgress > 75
                     )
                 }
@@ -676,15 +672,16 @@ struct SwatchStep2View: View {
         .padding(.bottom, 24)
     }
 
-    private func step2State3ProgressRow(label: String, progress: CGFloat, percent: Int, isActive: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private func step2State3ProgressRow(label: String, progress: CGFloat, isActive: Bool) -> some View {
+        let stepPercent = min(100, Int(progress * 100))
+        return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(label)
                     .font(.custom("Overused Grotesk", size: 14).weight(.regular))
                     .foregroundColor(isActive ? Color(hex: "101828") : Color(hex: "6A7282"))
                     .lineLimit(1)
                 Spacer(minLength: 8)
-                Text("\(percent)%")
+                Text("\(stepPercent)%")
                     .font(.custom("Overused Grotesk", size: 14).weight(.regular))
                     .foregroundColor(isActive ? Color(hex: "101828") : Color(hex: "6A7282"))
             }

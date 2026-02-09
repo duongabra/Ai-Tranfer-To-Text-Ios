@@ -89,8 +89,8 @@ struct HomeView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Avatar + badge/Free: toàn bộ khối 50x50, badge đủ rộng hiện đủ "PRO"
-            NavigationLink(destination: PaywallView()) {
+            // Avatar + badge/Free: bấm vào → màn Profile (trong Profile có Manage Subscription → Paywall)
+            NavigationLink(destination: ProfileView()) {
                 ZStack {
                     VStack(alignment: .center, spacing: 0) {
                         avatarView

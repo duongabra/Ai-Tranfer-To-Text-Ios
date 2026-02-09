@@ -26,199 +26,170 @@ struct PaywallView: View {
     @State private var showManageSubscriptions = false
     
     var body: some View {
-        ZStack {
-            // Background màu #D87757
-            Color.primaryOrange.opacity(0.05)
+        ZStack(alignment: .topLeading) {
+            Color.white
                 .ignoresSafeArea()
             
-            ScrollView {
-                VStack(spacing: 24) {
-                    
-                    // MARK: - Group Icon (thay art_illustration)
-                    Image(hasActiveSubscription ? "Group_4" : "art_illustration")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: hasActiveSubscription ? 96 : 358, height: hasActiveSubscription ? 96 : 200)
-                        .padding(.top, 16)
-                    
-                    // MARK: - Title + Description
-                    if hasActiveSubscription {
-                        // Có subscription: căn giữa
-                        VStack(alignment: .center, spacing: 4) {
-                            Text("You're on Pro")
-                                .font(.custom("Overused Grotesk", size: 24))
-                                .fontWeight(.semibold)
-                                .monospacedDigit()
-                                .foregroundColor(.textPrimary)
-                                .multilineTextAlignment(.center)
-                                .lineSpacing(32 - 24) // line-height: 32px
+            if hasActiveSubscription {
+                // Đã subscribe: scroll chỉ header + 2 card; nút + links cố định ở cuối màn hình
+                VStack(spacing: 0) {
+                    ScrollView {
+                        VStack(spacing: 20) {
+                            // Header (Figma 55499-2457)
+                            HStack(spacing: 16) {
+                                Button(action: { dismiss() }) {
+                                    Image("subscription_back_icon")
+                                        .resizable()
+                                        .renderingMode(.template)
+                                        .scaledToFit()
+                                        .frame(width: 20, height: 20)
+                                        .foregroundColor(Color(hex: "99A1AF"))
+                                        .frame(width: 32, height: 32)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                Spacer(minLength: 0)
+                                Text("Subscription Info")
+                                    .font(.custom("Overused Grotesk", size: 18))
+                                    .fontWeight(.medium)
+                                    .foregroundColor(Color(hex: "101828"))
+                                Spacer(minLength: 0)
+                                Color.clear.frame(width: 32, height: 32)
+                            }
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 14)
+                            .frame(maxWidth: .infinity)
                             
-                            Text("Full access is active on this account.")
-                                .font(.custom("Overused Grotesk", size: 14))
-                                .fontWeight(.regular)
-                                .monospacedDigit()
-                                .foregroundColor(.textTertiary)
-                                .multilineTextAlignment(.center)
-                                .lineSpacing(20 - 14) // line-height: 20px
-                        }
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.horizontal, 16)
-                    } else {
-                        // Chưa có subscription: căn trái
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Go Pro for Full Access")
-                                .font(.custom("Overused Grotesk", size: 24))
-                                .fontWeight(.semibold)
-                                .monospacedDigit()
-                                .foregroundColor(.textPrimary)
-                                .multilineTextAlignment(.leading)
-                                .lineSpacing(32 - 24) // line-height: 32px
-                            
-                            Text("Unlock the complete summary and chat deeper with the video content.")
-                                .font(.custom("Overused Grotesk", size: 14))
-                                .fontWeight(.regular)
-                                .monospacedDigit()
-                                .foregroundColor(.textTertiary)
-                                .multilineTextAlignment(.leading)
-                                .lineSpacing(20 - 14) // line-height: 20px
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 16)
-                    }
-                    
-                    // MARK: - Subscription Info Card (chỉ hiển thị khi có subscription)
-                    if hasActiveSubscription, let productId = currentProductId, let expirationDate = expirationDate {
-                        // Tìm plan tương ứng để lấy price từ product
-                        let currentPlan = availablePlans.first(where: { $0.id == productId })
-                        SubscriptionInfoCard(
-                            productId: productId,
-                            expirationDate: expirationDate,
-                            nextPaymentDate: nextPaymentDate ?? expirationDate,
-                            isCancelled: isSubscriptionCancelled,
-                            planPrice: currentPlan?.price ?? ""
-                        )
-                        .padding(.horizontal, 16)
-                    }
-                    
-                    // MARK: - Subscription Details & Terms (Required by Apple) - Moved to top
-                    if !hasActiveSubscription {
-                        VStack(spacing: 12) {
-                            // Subscription details card
-                            if let plan = selectedPlan ?? availablePlans.first(where: { $0.type == .monthly }) {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Subscription Details")
-                                        .font(Font.custom("Overused Grotesk", size: 14).weight(.semibold))
-                                        .foregroundColor(.textPrimary)
-                                    
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        HStack(spacing: 8) {
-                                            Text("Title:")
-                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.regular))
-                                                .foregroundColor(.textTertiary)
-                                                .frame(width: 60, alignment: .leading)
-                                            Text(plan.title)
-                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.medium))
-                                                .foregroundColor(.textPrimary)
-                                        }
-                                        
-                                        HStack(spacing: 8) {
-                                            Text("Length:")
-                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.regular))
-                                                .foregroundColor(.textTertiary)
-                                                .frame(width: 60, alignment: .leading)
-                                            Text(plan.duration)
-                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.medium))
-                                                .foregroundColor(.textPrimary)
-                                        }
-                                        
-                                        HStack(spacing: 8) {
-                                            Text("Price:")
-                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.regular))
-                                                .foregroundColor(.textTertiary)
-                                                .frame(width: 60, alignment: .leading)
-                                            Text(plan.price)
-                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.medium))
-                                                .foregroundColor(.textPrimary)
-                                        }
-                                        
-                                        HStack(spacing: 8) {
-                                            Text("Type:")
-                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.regular))
-                                                .foregroundColor(.textTertiary)
-                                                .frame(width: 60, alignment: .leading)
-                                            Text("Auto-renewable subscription")
-                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.medium))
-                                                .foregroundColor(.textPrimary)
-                                        }
+                            // Card 1: LipMatch Pro
+                            if let productId = currentProductId, let expirationDate = expirationDate {
+                                let currentPlan = availablePlans.first(where: { $0.id == productId })
+                                let planTitle = productId.contains("weekly") ? "Weekly plan" : "Monthly plan"
+                                let priceLine = productId.contains("weekly")
+                                    ? "\(currentPlan?.price ?? "") pay per week"
+                                    : "\(currentPlan?.price ?? "") pay per month"
+                                let renewText = isSubscriptionCancelled
+                                    ? "Access until: \(formatRenewDate(expirationDate))"
+                                    : "Renews at \(formatRenewDate(nextPaymentDate ?? expirationDate))"
+                                VStack(alignment: .leading, spacing: 12) {
+                                    Text("LipMatch Pro")
+                                        .font(.custom("Overused Grotesk", size: 20))
+                                        .fontWeight(.medium)
+                                        .foregroundColor(Color(hex: "101828"))
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        SubscriptionInfoRow(assetIcon: "diamond_subscription", text: planTitle)
+                                        SubscriptionInfoRow(systemName: "creditcard", text: priceLine)
+                                        SubscriptionInfoRow(systemName: "arrow.clockwise", text: renewText)
                                     }
                                 }
                                 .padding(16)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.white)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Color(hex: "E4E4E4"), lineWidth: 1)
-                                )
-                                .cornerRadius(12)
-                                .padding(.horizontal, 16)
+                                .background(Color(hex: "F9FAFB"))
+                                .overlay(alignment: .bottomTrailing) {
+                                    Image("lipmatch_decor")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 115, height: 101)
+                                }
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "E5E7EB"), lineWidth: 1))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .padding(.horizontal, 20)
                             }
                             
-                            // Terms and Privacy Policy
-                            HStack(spacing: 4) {
-                                Text("By subscribing, you agree to our")
-                                    .font(Font.custom("Overused Grotesk", size: 11).weight(.regular))
-                                    .foregroundColor(.textTertiary)
-                                
-                                Button(action: {
-                                    openURL("https://quick-vid-read.lovable.app/terms")
-                                }) {
-                                    Text("Terms of Service")
-                                        .font(Font.custom("Overused Grotesk", size: 11).weight(.regular))
-                                        .foregroundColor(.primaryOrange)
-                                        .underline()
-                                }
-                                
-                                Text("and")
-                                    .font(Font.custom("Overused Grotesk", size: 11).weight(.regular))
-                                    .foregroundColor(.textTertiary)
-                                
-                                Button(action: {
-                                    openURL("https://quick-vid-read.lovable.app/privacy")
-                                }) {
-                                    Text("Privacy Policy")
-                                        .font(Font.custom("Overused Grotesk", size: 11).weight(.regular))
-                                        .foregroundColor(.primaryOrange)
-                                        .underline()
+                            // Card 2: You have unlimited access to
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("You have unlimited access to:")
+                                    .font(.custom("Overused Grotesk", size: 16))
+                                    .fontWeight(.medium)
+                                    .foregroundColor(Color(hex: "101828"))
+                                VStack(alignment: .leading, spacing: 8) {
+                                    FeatureRow(icon: "check_line", text: "Unlimited lipstick try-ons")
+                                    FeatureRow(icon: "check_line", text: "Fine-tune color depth & lip edges.")
+                                    FeatureRow(icon: "check_line", text: "Save, revisit, and compare anytime.")
                                 }
                             }
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 16)
+                            .padding(16)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.white)
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "E5E7EB"), lineWidth: 1))
+                            .cornerRadius(12)
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 24)
                         }
-                        .padding(.top, 8)
-                        .padding(.bottom, 8)
                     }
                     
-                    // MARK: - Features (chỉ hiển thị khi chưa có subscription)
-                    if !hasActiveSubscription {
-                        VStack(spacing: 8) {
-                            FeatureRow(
-                                icon: "video_camera_icon",
-                                text: "Unlimited video analyzing"
-                            )
-                            FeatureRow(
-                                icon: "document_icon",
-                                text: "Build your knowledge library"
-                            )
-                            FeatureRow(
-                                icon: "history_icon",
-                                text: "Save hours with Pro Summarizes"
-                            )
+                    // Khối cố định cuối màn hình: nút Manage Plan + Terms & Policy
+                    VStack(spacing: 12) {
+                        Button(action: { managePlan() }) {
+                            Text("Manage Plan")
+                                .font(.custom("Overused Grotesk", size: 16))
+                                .fontWeight(.medium)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .padding(.horizontal, 20)
+                                .background(Color(hex: "030712"))
+                                .foregroundColor(Color(hex: "F9FAFB"))
+                                .cornerRadius(9999)
                         }
-                        .environment(\.multilineTextAlignment, TextAlignment.center)
-                        .environment(\.font, Font.custom("Overused Grotesk", size: 16)
-                            .weight(.semibold)
-                        )
-                        .padding(.horizontal, 16)
+                        HStack(spacing: 8) {
+                            Button(action: { openURL("https://quick-vid-read.lovable.app/terms") }) {
+                                Text("Terms & Conditions")
+                                    .font(Font.custom("Overused Grotesk", size: 12).weight(.regular))
+                                    .foregroundColor(Color(hex: "6A7282"))
+                            }
+                            Rectangle()
+                                .fill(Color(hex: "D1D5DC"))
+                                .frame(width: 1, height: 12)
+                            Button(action: { openURL("https://quick-vid-read.lovable.app/privacy") }) {
+                                Text("Privacy Policy")
+                                    .font(Font.custom("Overused Grotesk", size: 12).weight(.regular))
+                                    .foregroundColor(Color(hex: "6A7282"))
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    .padding(.bottom, 0)
+                    .background(Color.white)
+                }
+            } else {
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Chưa subscribe
+                        // MARK: - Group Icon (chưa subscribe)
+                        Image("art_illustration")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 358, height: 200)
+                            .padding(.top, 20)
+                    }
+                    
+                    if !hasActiveSubscription {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Go Pro - Try any lipstick with AI")
+                                .font(.custom("Overused Grotesk", size: 24))
+                                .fontWeight(.medium)
+                                .foregroundColor(Color(hex: "101828"))
+                                .multilineTextAlignment(.leading)
+                            
+                            Text("Get faster results, more edits, and unlimited try-ons. Upgrade anytime.")
+                                .font(.custom("Overused Grotesk", size: 14))
+                                .fontWeight(.regular)
+                                .foregroundColor(Color(hex: "6A7282"))
+                                .multilineTextAlignment(.leading)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20)
+                    }
+                    
+                    // MARK: - Features (Figma: lipstick, ai, check + label-sm #101828)
+                    if !hasActiveSubscription {
+                        VStack(alignment: .leading, spacing: 8) {
+                            FeatureRow(icon: "lipstick_icon", text: "Unlimited lipstick try-ons")
+                            FeatureRow(icon: "fine_tune_icon", text: "Fine-tune color depth & lip edges.")
+                            FeatureRow(icon: "check_line", text: "Save, revisit, and compare anytime.")
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20)
                     }
                     
                     // MARK: - Plans (chỉ hiển thị khi chưa có subscription)
@@ -244,88 +215,131 @@ struct PaywallView: View {
                                     )
                                 }
                             }
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, 20)
                         }
                     }
                     
-                    // MARK: - Buttons
-                    VStack(spacing: 8) {
-                        if hasActiveSubscription {
-                            // Khi đã có subscription: Manage Plan và Back to Home
-                            // Primary Button: Manage Plan
-                            Button(action: {
-                                managePlan()
-                            }) {
-                                Text("Manage Plan")
-                                    .font(.custom("Overused Grotesk", size: 16))
-                                    .fontWeight(.semibold)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                                    .padding(.horizontal, 20)
-                                    .background(Color.primaryOrange)
-                                    .foregroundColor(.textWhite)
-                                    .cornerRadius(16)
+                    // MARK: - Subscription Details & Terms (Required by Apple) — below plan selection
+                    if !hasActiveSubscription {
+                        VStack(spacing: 12) {
+                            if let plan = selectedPlan ?? availablePlans.first(where: { $0.type == .monthly }) ?? availablePlans.first {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Subscription Details")
+                                        .font(Font.custom("Overused Grotesk", size: 14).weight(.semibold))
+                                        .foregroundColor(Color(hex: "101828"))
+                                    
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        HStack(spacing: 8) {
+                                            Text("Title:")
+                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.regular))
+                                                .foregroundColor(Color(hex: "6A7282"))
+                                                .frame(width: 60, alignment: .leading)
+                                            Text(plan.title)
+                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.medium))
+                                                .foregroundColor(Color(hex: "101828"))
+                                        }
+                                        HStack(spacing: 8) {
+                                            Text("Length:")
+                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.regular))
+                                                .foregroundColor(Color(hex: "6A7282"))
+                                                .frame(width: 60, alignment: .leading)
+                                            Text(plan.duration)
+                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.medium))
+                                                .foregroundColor(Color(hex: "101828"))
+                                        }
+                                        HStack(spacing: 8) {
+                                            Text("Price:")
+                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.regular))
+                                                .foregroundColor(Color(hex: "6A7282"))
+                                                .frame(width: 60, alignment: .leading)
+                                            Text(plan.price)
+                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.medium))
+                                                .foregroundColor(Color(hex: "101828"))
+                                        }
+                                        HStack(spacing: 8) {
+                                            Text("Type:")
+                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.regular))
+                                                .foregroundColor(Color(hex: "6A7282"))
+                                                .frame(width: 60, alignment: .leading)
+                                            Text("Auto-renewable subscription")
+                                                .font(Font.custom("Overused Grotesk", size: 12).weight(.medium))
+                                                .foregroundColor(Color(hex: "101828"))
+                                        }
+                                    }
+                                }
+                                .padding(16)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.white)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color(hex: "E4E4E4"), lineWidth: 1)
+                                )
+                                .cornerRadius(12)
                             }
-                            
-                            // Secondary Button: Back to Home
-                            Button(action: {
-                                dismiss()
-                            }) {
-                                Text("Back to Home")
-                                    .font(.custom("Overused Grotesk", size: 16))
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.textPrimary)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .padding(.horizontal, 20)
-                        } else {
-                            // Khi chưa có subscription: Upgrade to Pro và Not now
-                            // Primary Button: Upgrade to Pro
-                            Button(action: {
-                                subscribeToPlan()
-                            }) {
+                            // HStack(spacing: 4) {
+                            //     Text("By subscribing, you agree to our")
+                            //         .font(Font.custom("Overused Grotesk", size: 12).weight(.regular))
+                            //         .foregroundColor(Color(hex: "6A7282"))
+                            //     Button(action: { openURL("https://quick-vid-read.lovable.app/terms") }) {
+                            //         Text("Terms of Service")
+                            //             .font(Font.custom("Overused Grotesk", size: 12).weight(.regular))
+                            //             .foregroundColor(Color(hex: "101828"))
+                            //             .underline()
+                            //     }
+                            //     Text("and")
+                            //         .font(Font.custom("Overused Grotesk", size: 12).weight(.regular))
+                            //         .foregroundColor(Color(hex: "6A7282"))
+                            //     Button(action: { openURL("https://quick-vid-read.lovable.app/privacy") }) {
+                            //         Text("Privacy Policy")
+                            //             .font(Font.custom("Overused Grotesk", size: 12).weight(.regular))
+                            //             .foregroundColor(Color(hex: "101828"))
+                            //             .underline()
+                            //     }
+                            // }
+                            // .multilineTextAlignment(.center)
+                        }
+                        .padding(.horizontal, 20)
+                    }
+                    
+                    // MARK: - Buttons (chưa subscribe: Upgrade to Pro)
+                    VStack(spacing: 12) {
+                            Button(action: { subscribeToPlan() }) {
                                 HStack(spacing: 8) {
-                                    Image("crown_icon")
+                                    Image("VIP_2_fill")
                                         .resizable()
+                                        .renderingMode(.template)
                                         .scaledToFit()
                                         .frame(width: 20, height: 20)
-                                        .padding(2)
-                                    
+                                        .foregroundColor(Color(hex: "F9FAFB"))
                                     if isLoading {
                                         ProgressView()
-                                            .progressViewStyle(CircularProgressViewStyle(tint: .textWhite))
+                                            .progressViewStyle(CircularProgressViewStyle(tint: Color(hex: "F9FAFB")))
                                     } else {
                                         Text("Upgrade to Pro")
                                             .font(.custom("Overused Grotesk", size: 16))
-                                            .fontWeight(.semibold)
+                                            .fontWeight(.medium)
+                                            .foregroundColor(Color(hex: "F9FAFB"))
                                     }
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
                                 .padding(.horizontal, 20)
                                 .padding(.leading, 10)
-                                .background(Color.primaryOrange)
-                                .foregroundColor(.textWhite)
-                                .cornerRadius(16)
+                                .background(Color(hex: "030712"))
+                                .cornerRadius(9999)
                             }
                             .disabled(isLoading || selectedPlan == nil)
                             
-                            // Secondary Button: Not now
-                            Button(action: {
-                                dismiss()
-                            }) {
-                                Text("Not now")
-                                    .font(.custom("Overused Grotesk", size: 16))
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.textPrimary)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .padding(.horizontal, 20)
-                        }
+                            // Button(action: { dismiss() }) {
+                            //     Text("Not now")
+                            //         .font(.custom("Overused Grotesk", size: 16))
+                            //         .fontWeight(.medium)
+                            //         .foregroundColor(Color(hex: "101828"))
+                            // }
+                            // .frame(maxWidth: .infinity)
+                            // .padding(.vertical, 10)
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 20)
                     
                     // MARK: - Error Message
                     if let errorMessage = errorMessage {
@@ -336,30 +350,41 @@ struct PaywallView: View {
                             .padding(.horizontal, 0)
                     }
                     
-                    // MARK: - Terms & Policy (Bottom links)
+                    // MARK: - Terms & Policy (Figma: body-xs #6A7282, gap 8, separator #D1D5DC)
                     HStack(spacing: 8) {
-                        Button(action: {
-                            openURL("https://quick-vid-read.lovable.app/terms")
-                        }) {
+                        Button(action: { openURL("https://quick-vid-read.lovable.app/terms") }) {
                             Text("Terms & Conditions")
-                                .font(Font.custom("Overused Grotesk", size: 13).weight(.regular))
-                                .foregroundColor(.textTertiary)
+                                .font(Font.custom("Overused Grotesk", size: 12).weight(.regular))
+                                .foregroundColor(Color(hex: "6A7282"))
                         }
-                        
                         Rectangle()
-                            .fill(Color.borderGray)
+                            .fill(Color(hex: "D1D5DC"))
                             .frame(width: 1, height: 12)
-                        
-                        Button(action: {
-                            openURL("https://quick-vid-read.lovable.app/privacy")
-                        }) {
+                        Button(action: { openURL("https://quick-vid-read.lovable.app/privacy") }) {
                             Text("Privacy Policy")
-                                .font(Font.custom("Overused Grotesk", size: 13).weight(.regular))
-                                .foregroundColor(.textTertiary)
+                                .font(Font.custom("Overused Grotesk", size: 12).weight(.regular))
+                                .foregroundColor(Color(hex: "6A7282"))
                         }
                     }
                     .padding(.bottom, 20)
                 }
+            }
+            
+            // MARK: - Close button (top-left, chỉ khi chưa subscribe; khi đã subscribe dùng back trong header)
+            if !hasActiveSubscription {
+                Button(action: { dismiss() }) {
+                    Image("paywall_close_icon")
+                        .resizable()
+                        .renderingMode(.template)
+                        .scaledToFit()
+                        .frame(width: 16, height: 16)
+                        .foregroundColor(Color(hex: "F9FAFB"))
+                        .padding(8)
+                }
+                .background(Color.white.opacity(0.3))
+                .clipShape(Circle())
+                .padding(.top, 8)
+                .padding(.leading, 20)
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -506,6 +531,12 @@ struct PaywallView: View {
         showManageSubscriptions = true
     }
     
+    private func formatRenewDate(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "d MMM, yyyy"
+        return f.string(from: date)
+    }
+    
     // MARK: - Cancel Subscription Action
     
     private func cancelSubscription() {
@@ -528,139 +559,138 @@ struct PaywallView: View {
     }
 }
 
-// MARK: - Plan Card
+// MARK: - Plan Card (Figma: white bg, border selected #101828 / unselected #E5E7EB, radius 12, padding 12×16, price 28px #101828)
 
 struct PlanCard: View {
     let plan: SubscriptionPlan
     let isSelected: Bool
     let onTap: () -> Void
     
-    // Monthly plan = gói tháng (luôn có background cam nhạt - Best value)
-    // Weekly plan = gói tuần (background trắng)
-    private var isMonthlyPlan: Bool {
-        return plan.type == .monthly
-    }
+    private var isMonthlyPlan: Bool { plan.type == .monthly }
     
     var body: some View {
         Button(action: onTap) {
-            HStack(alignment: .center, spacing: 8) {
+            HStack(alignment: .center, spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
-                    // Title row với badge "Best value" cho monthly plan
                     HStack(alignment: .center, spacing: 6) {
                         Text(plan.title)
                             .font(.custom("Overused Grotesk", size: 18))
                             .fontWeight(.semibold)
-                            .foregroundColor(.textPrimary)
+                            .foregroundColor(Color(hex: "101828"))
                         
-                        // Badge "30% Off" cho monthly plan (Best value)
                         if isMonthlyPlan && !plan.isCurrentPlan {
-                            HStack(spacing: 4) {
-                                Image("Group_icon")
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 12, height: 12)
-                                    .foregroundColor(.textWhite)
-                                
-                                Text("30% Off")
-                                    .font(.custom("Overused Grotesk", size: 12))
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.textWhite)
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.primaryOrange)
-                            .cornerRadius(16)
+                            Text("Best value")
+                                .font(.custom("Overused Grotesk", size: 11))
+                                .fontWeight(.medium)
+                                .foregroundColor(Color(hex: "F9FAFB"))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color(hex: "030712"))
+                                .cornerRadius(4)
                         }
                     }
-                    
-                    // Description row
-                    HStack(alignment: .center, spacing: 6) {
-                        if isMonthlyPlan {
-                            Text("Best value")
-                                .font(.custom("Overused Grotesk", size: 14))
-                                .fontWeight(.regular)
-                                .foregroundColor(.textTertiary)
-                            
-                            // Dot separator
-                            Circle()
-                                .fill(Color.primaryOrange)
-                                .frame(width: 4, height: 4)
-                            
-                            Text("Unlimited analyzing")
-                                .font(.custom("Overused Grotesk", size: 14))
-                                .fontWeight(.regular)
-                                .foregroundColor(.textTertiary)
-                        } else {
-                            // Weekly plan không có description
-                        }
+                    if isMonthlyPlan {
+                        Text("Unlimited analyzing")
+                            .font(.custom("Overused Grotesk", size: 14))
+                            .fontWeight(.regular)
+                            .foregroundColor(Color(hex: "6A7282"))
                     }
                 }
                 
                 Spacer()
                 
-                // Price column - Lấy giá trực tiếp từ product, không hardcode
-                VStack(alignment: .trailing, spacing: 2) {
-                    if isMonthlyPlan {
-                        // Gói tháng: Hiển thị giá từ product
-                        Text("\(plan.price) / mo")
-                            .font(.custom("Overused Grotesk", size: 20))
+                if isMonthlyPlan {
+                    HStack(alignment: .top, spacing: 6) {
+                        Text(plan.price)
+                            .font(.custom("Overused Grotesk", size: 28))
                             .fontWeight(.semibold)
-                            .foregroundColor(.primaryOrange)
-                    } else {
-                        // Gói tuần: Hiển thị giá từ product
-                        Text("\(plan.price) / wk")
-                            .font(.custom("Overused Grotesk", size: 20))
+                            .foregroundColor(Color(hex: "101828"))
+                        Text("/mo")
+                            .font(.custom("Overused Grotesk", size: 16))
                             .fontWeight(.semibold)
-                            .foregroundColor(.primaryOrange)
+                            .foregroundColor(Color(hex: "101828"))
+                    }
+                } else {
+                    HStack(alignment: .top, spacing: 6) {
+                        Text(plan.price)
+                            .font(.custom("Overused Grotesk", size: 28))
+                            .fontWeight(.semibold)
+                            .foregroundColor(Color(hex: "101828"))
+                        Text("/wk")
+                            .font(.custom("Overused Grotesk", size: 16))
+                            .fontWeight(.semibold)
+                            .foregroundColor(Color(hex: "101828"))
                     }
                 }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .background(
-                // Gói tháng (monthly) luôn có background cam nhạt - Best value
-                // Gói tuần (weekly) background trắng
-                isMonthlyPlan
-                    ? Color.primaryOrange.opacity(0.1)
-                    : Color.white
-            )
+            .background(Color.white)
             .overlay(
-                RoundedRectangle(cornerRadius: 16)
+                RoundedRectangle(cornerRadius: 12)
                     .stroke(
-                        // Nếu chọn gói nào thì gói đó có border màu cam
-                        isSelected
-                            ? Color.primaryOrange
-                            : Color(hex: "000000").opacity(0.05),
+                        isSelected ? Color(hex: "101828") : Color(hex: "E5E7EB"),
                         lineWidth: 1
                     )
             )
-            .cornerRadius(16)
+            .cornerRadius(12)
         }
         .buttonStyle(PlainButtonStyle())
     }
 }
 
-// MARK: - Feature Row
+// MARK: - Subscription Info Row (Figma: icon 20×20 + body-sm #101828, for subscribed state cards)
+
+struct SubscriptionInfoRow: View {
+    var assetIcon: String? = nil
+    var systemName: String? = nil
+    let text: String
+    
+    var body: some View {
+        HStack(alignment: .center, spacing: 8) {
+            if let asset = assetIcon {
+                Image(asset)
+                    .resizable()
+                    .renderingMode(.template)
+                    .scaledToFit()
+                    .frame(width: 18, height: 16)
+                    .foregroundColor(Color(hex: "101828"))
+            } else if let sys = systemName {
+                Image(systemName: sys)
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundColor(Color(hex: "101828"))
+                    .frame(width: 20, height: 20)
+            }
+            Text(text)
+                .font(.custom("Overused Grotesk", size: 14))
+                .fontWeight(.regular)
+                .foregroundColor(Color(hex: "101828"))
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+// MARK: - Feature Row (Figma: icon 20×20, label-sm 14px #101828)
 
 struct FeatureRow: View {
     let icon: String
     let text: String
+    var iconColor: Color = Color(hex: "101828")
     
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
             Image(icon)
                 .resizable()
+                .renderingMode(.template)
                 .scaledToFit()
                 .frame(width: 20, height: 20)
-                .foregroundColor(.white)
+                .foregroundColor(iconColor)
             
             Text(text)
-                .font(.custom("Overused Grotesk", size: 16))
-                .fontWeight(.semibold)
-                .monospacedDigit()
-                .foregroundColor(.textPrimary)
+                .font(.custom("Overused Grotesk", size: 14))
+                .fontWeight(.regular)
+                .foregroundColor(Color(hex: "101828"))
                 .multilineTextAlignment(.leading)
-                .lineSpacing(24 - 16) // line-height: 24px
             
             Spacer()
         }
@@ -712,27 +742,27 @@ struct SubscriptionInfoCard: View {
             Text("\(planTitle) - \(planPriceDisplay)")
                 .font(.custom("Overused Grotesk", size: 14))
                 .fontWeight(.semibold)
-                .foregroundColor(.textPrimary)
+                .foregroundColor(Color(hex: "101828"))
             
             HStack(spacing: 0) {
                 Text(isCancelled ? "Access until: " : "Next payment: ")
                     .font(.custom("Overused Grotesk", size: 14))
                     .fontWeight(.regular)
-                    .foregroundColor(.textTertiary) // #717171
+                    .foregroundColor(Color(hex: "6A7282"))
                 
                 Text(formatDate(nextPaymentDate))
                     .font(.custom("Overused Grotesk", size: 14))
                     .fontWeight(.regular)
-                    .foregroundColor(.textPrimary) // #020202
+                    .foregroundColor(Color(hex: "101828"))
             }
         }
         .padding(12)
         .background(Color.white)
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.primaryOrange.opacity(0.2), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color(hex: "E5E7EB"), lineWidth: 1)
         )
-        .cornerRadius(16)
+        .cornerRadius(12)
     }
 }
 

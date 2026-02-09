@@ -31,6 +31,11 @@ struct SwatchStep2View: View {
     @State private var step2BeforeAfterSliderPosition: CGFloat = 0.5 // 0 = all After, 1 = all Before
     @State private var step2SliderDragStartPosition: CGFloat? = nil
 
+    /// Lipstick info từ Step 1 (có thể truyền từ SwatchUploadView sau). Tạm dùng placeholder.
+    @State private var step2LipstickBrand = "MAC"
+    @State private var step2LipstickProduct = "Silky Matte Lipstick"
+    @State private var step2LipstickShade = "646 Marrakesh"
+
     private var isState2: Bool { faceImage != nil && !step2ShowingState3 && !step2ShowingState4 }
 
     var body: some View {
@@ -274,6 +279,12 @@ struct SwatchStep2View: View {
             .padding(.vertical, 12)
             .background(Color(hex: "F9FAFB"))
             .cornerRadius(16)
+            // Lipstick info block (giống Step 1 State 4)
+            VStack(spacing: 8) {
+                step2LipstickInfoRow(label: "Brand", value: step2LipstickBrand)
+                step2LipstickInfoRow(label: "Product", value: step2LipstickProduct)
+                step2LipstickInfoRow(label: "Shade", value: step2LipstickShade)
+            }
             // Like or dislike — centered, 12px gap between text and each button
             HStack(alignment: .center, spacing: 12) {
                 Text("Do you like this swatch?")
@@ -314,6 +325,23 @@ struct SwatchStep2View: View {
     }
 
     private static let step2BeforeAfterAspectRatio: CGFloat = 335 / 446
+
+    /// Một dòng hiển thị thông tin son (Brand/Product/Shade), style giống Step 1.
+    private func step2LipstickInfoRow(label: String, value: String) -> some View {
+        HStack(alignment: .center, spacing: 16) {
+            Text(label)
+                .font(.custom("Overused Grotesk", size: 14).weight(.regular))
+                .foregroundColor(Color(hex: "6A7282"))
+            Spacer()
+            Text(value)
+                .font(.custom("Overused Grotesk", size: 14).weight(.medium))
+                .foregroundColor(Color(hex: "101828"))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(hex: "F9FAFB"))
+        .cornerRadius(12)
+    }
 
     private var step2State4BeforeAfterBlock: some View {
         GeometryReader { geometry in

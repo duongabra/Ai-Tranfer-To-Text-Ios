@@ -135,6 +135,22 @@ struct SwatchStep1View: View {
     @State private var mockTimer: Timer?
     private let mockDuration: TimeInterval = 10
 
+    // State 4: lipstick details (editable), edit mode, and which field is being edited
+    @State private var step1State4Brand = "MAC"
+    @State private var step1State4Product = "Silky Matte Lipstick"
+    @State private var step1State4Shade = "646 Marrakesh"
+    @State private var step1State4EditMode = false
+    @State private var step1State4EditingField: String? = nil
+    @State private var step1State4EditSheetFieldKey: String = ""
+    @State private var step1State4EditSheetValue = ""
+    @State private var step1State4ShowEditView = false
+
+    private var step1State4AllFilled: Bool {
+        !step1State4Brand.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !step1State4Product.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !step1State4Shade.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private var step1State2: Bool {
         lipstickImage1 != nil && lipstickImage2 != nil
     }
@@ -672,9 +688,9 @@ struct SwatchStep1View: View {
                     .foregroundColor(Color(hex: "6A7282"))
             }
             VStack(spacing: 8) {
-                state4InfoRow(label: "Brand", value: "MAC")
-                state4InfoRow(label: "Product", value: "Silky Matte Lipstick")
-                state4InfoRow(label: "Shade", value: "646 Marrakesh")
+                state4InfoRowDisplayOnly(label: "Brand", value: step1State4Brand)
+                state4InfoRowDisplayOnly(label: "Product", value: step1State4Product)
+                state4InfoRowDisplayOnly(label: "Shade", value: step1State4Shade)
             }
             VStack(spacing: 12) {
                 Button(action: {
@@ -690,10 +706,15 @@ struct SwatchStep1View: View {
                         .cornerRadius(9999)
                 }
                 .buttonStyle(PlainButtonStyle())
-                Button(action: { /* Edit details - TODO */ }) {
+                Button(action: {
+                    step1State4ShowEditView = true
+                }) {
                     HStack(spacing: 8) {
-                        Image(systemName: "pencil")
-                            .font(.system(size: 16))
+                        Image("step1_edit_pencil")
+                            .resizable()
+                            .renderingMode(.template)
+                            .scaledToFit()
+                            .frame(width: 20, height: 20)
                             .foregroundColor(Color(hex: "101828"))
                         Text("Edit details")
                             .font(.custom("Overused Grotesk", size: 16).weight(.medium))
@@ -702,6 +723,7 @@ struct SwatchStep1View: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
                     .padding(.horizontal, 20)
+                    .contentShape(Rectangle())
                     .overlay(
                         RoundedRectangle(cornerRadius: 9999)
                             .stroke(Color(hex: "101828"), lineWidth: 1)
@@ -714,9 +736,78 @@ struct SwatchStep1View: View {
         .padding(.top, 0)
         .padding(.bottom, 32)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .fullScreenCover(isPresented: $step1State4ShowEditView) {
+            state4EditViewLikeImage3
+        }
     }
 
-    private func state4InfoRow(label: String, value: String) -> some View {
+    /// Giao diện edit như ảnh 3: 3 dòng có bút chì, Save and add face photo
+    private var state4EditViewLikeImage3: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(Color(hex: "F97316"))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("We couldn’t identify this lipstick")
+                        .font(.custom("Overused Grotesk", size: 20).weight(.regular))
+                        .foregroundColor(Color(hex: "101828"))
+                    Text("Don’t worries — you can enter the details manually to continue swatching.")
+                        .font(.custom("Overused Grotesk", size: 14).weight(.regular))
+                        .foregroundColor(Color(hex: "6A7282"))
+                }
+                // Spacer()
+                // Button(action: { step1State4ShowEditView = false }) {
+                //     Image(systemName: "xmark")
+                //         .font(.system(size: 16, weight: .medium))
+                //         .foregroundColor(Color(hex: "101828"))
+                // }
+            }
+            VStack(spacing: 8) {
+                state4InfoRow(label: "Brand", value: step1State4Brand, fieldKey: "Brand", editMode: true) {
+                    step1State4EditSheetFieldKey = "Brand"
+                    step1State4EditSheetValue = step1State4Brand
+                    step1State4EditingField = "Brand"
+                }
+                state4InfoRow(label: "Product", value: step1State4Product, fieldKey: "Product", editMode: true) {
+                    step1State4EditSheetFieldKey = "Product"
+                    step1State4EditSheetValue = step1State4Product
+                    step1State4EditingField = "Product"
+                }
+                state4InfoRow(label: "Shade", value: step1State4Shade, fieldKey: "Shade", editMode: true) {
+                    step1State4EditSheetFieldKey = "Shade"
+                    step1State4EditSheetValue = step1State4Shade
+                    step1State4EditingField = "Shade"
+                }
+            }
+            Spacer(minLength: 0)
+            Button(action: {
+                step1State4ShowEditView = false
+                onProceedToStep2?()
+            }) {
+                Text("Save and add face photo")
+                    .font(.custom("Overused Grotesk", size: 16).weight(.medium))
+                    .foregroundColor(Color(hex: "F9FAFB"))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 20)
+                    .background(Color(hex: "030712"))
+                    .cornerRadius(9999)
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .background(Color.white)
+        .sheet(isPresented: Binding(
+            get: { step1State4EditingField != nil },
+            set: { if !$0 { step1State4EditingField = nil } }
+        )) {
+            state4EditSheet(fieldKey: step1State4EditSheetFieldKey)
+        }
+    }
+
+    private func state4InfoRowDisplayOnly(label: String, value: String) -> some View {
         HStack(alignment: .center, spacing: 16) {
             Text(label)
                 .font(.custom("Overused Grotesk", size: 14).weight(.regular))
@@ -725,6 +816,82 @@ struct SwatchStep1View: View {
             Text(value)
                 .font(.custom("Overused Grotesk", size: 14).weight(.medium))
                 .foregroundColor(Color(hex: "101828"))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(hex: "F9FAFB"))
+        .cornerRadius(12)
+    }
+
+    private func state4EditSheet(fieldKey: String) -> some View {
+        let title = "Edit lipstick information"
+        let label = fieldKey == "Product" ? "Product Name" : fieldKey
+        let placeholder = fieldKey == "Brand" ? "Enter brand" : (fieldKey == "Product" ? "Enter product name" : "Enter shade")
+        return NavigationView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(label)
+                    .font(.custom("Overused Grotesk", size: 14).weight(.regular))
+                    .foregroundColor(Color(hex: "101828"))
+                TextField(placeholder, text: $step1State4EditSheetValue)
+                    .font(.custom("Overused Grotesk", size: 14).weight(.regular))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(Color(hex: "F9FAFB"))
+                    .cornerRadius(12)
+                Spacer()
+                Button(action: {
+                    switch fieldKey {
+                    case "Brand": step1State4Brand = step1State4EditSheetValue
+                    case "Product": step1State4Product = step1State4EditSheetValue
+                    case "Shade": step1State4Shade = step1State4EditSheetValue
+                    default: break
+                    }
+                    step1State4EditingField = nil
+                }) {
+                    Text("Save")
+                        .font(.custom("Overused Grotesk", size: 16).weight(.medium))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color(hex: "99A1AF"))
+                        .cornerRadius(12)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+            .padding(20)
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: { step1State4EditingField = nil }) {
+                        Image(systemName: "xmark")
+                            .foregroundColor(Color(hex: "101828"))
+                    }
+                }
+            }
+        }
+    }
+
+    private func state4InfoRow(label: String, value: String, fieldKey: String, editMode: Bool, onPencilTap: @escaping () -> Void) -> some View {
+        HStack(alignment: .center, spacing: 16) {
+            Text(label)
+                .font(.custom("Overused Grotesk", size: 14).weight(.regular))
+                .foregroundColor(Color(hex: "6A7282"))
+            Spacer()
+            Text(value)
+                .font(.custom("Overused Grotesk", size: 14).weight(.medium))
+                .foregroundColor(Color(hex: "101828"))
+            if editMode {
+                Button(action: onPencilTap) {
+                    Image("step1_edit_pencil")
+                        .resizable()
+                        .renderingMode(.template)
+                        .scaledToFit()
+                        .frame(width: 20, height: 20)
+                        .foregroundColor(Color(hex: "99A1AF"))
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

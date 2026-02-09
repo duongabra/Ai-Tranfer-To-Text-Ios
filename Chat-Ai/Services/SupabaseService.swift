@@ -277,6 +277,18 @@ actor SupabaseService {
         let publicURL = "\(AppConfig.supabaseURL)/storage/v1/object/public/\(Self.storageBucket)/\(path)"
         return publicURL
     }
+
+    // MARK: - Conversations / Messages (stubs – no backend tables in current setup)
+
+    /// Fetches messages for a conversation. Stub returns empty array until messages table exists.
+    func fetchMessages(conversationId: UUID) async throws -> [Message] {
+        return []
+    }
+
+    /// Deletes all conversations and messages for current user. No-op until conversations table exists.
+    func deleteAllConversations() async throws {
+        // No-op: no conversations table in current Supabase schema
+    }
 }
 
 // MARK: - Error Types

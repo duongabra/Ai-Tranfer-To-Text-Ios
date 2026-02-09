@@ -28,6 +28,7 @@ private struct SwatchItem: Identifiable {
 
 struct HomeView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
+    @StateObject private var subscriptionViewModel = SubscriptionViewModel.shared
 
     /// Tên hiển thị: ưu tiên last_name, không có thì first_name, không có cả hai thì "Beauty"
     private var greetingName: String {
@@ -67,6 +68,9 @@ struct HomeView: View {
             }
         }
         .navigationBarHidden(true)
+        .onAppear {
+            Task { await subscriptionViewModel.loadSubscriptionStatus(forceRefresh: true) }
+        }
     }
 
     // MARK: - Header
@@ -85,13 +89,48 @@ struct HomeView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Avatar từ Supabase user_profiles.avatar_url; bấm vào → Paywall
+            // Avatar + badge/Free: toàn bộ khối 50x50, badge đủ rộng hiện đủ "PRO"
             NavigationLink(destination: PaywallView()) {
-                avatarView
+                ZStack {
+                    VStack(alignment: .center, spacing: 0) {
+                        avatarView
+                        Group {
+                            if subscriptionViewModel.hasPremiumAccess() {
+                                HStack(spacing: 3) {
+                                    Image("pro_badge_crown")
+                                        .renderingMode(.template)
+                                        .foregroundColor(.white)
+                                        .frame(width: 10, height: 8)
+                                    Text("PRO")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundColor(.white)
+                                        .lineLimit(1)
+                                }
+                                .fixedSize(horizontal: true, vertical: false)
+                                .padding(EdgeInsets(top: 4, leading: 8, bottom: 2, trailing: 8))
+                                .background(Color.black)
+                                .clipShape(Capsule())
+                            } else {
+                                Text("Free")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                                    .padding(EdgeInsets(top: 4, leading: 8, bottom: 2, trailing: 8))
+                                    .background(Color.black)
+                                    .clipShape(Capsule())
+                            }
+                        }
+                        .offset(y: -10)
+                    }
+                    .frame(width: 50, height: 55)
+                    .scaleEffect(50 / 55)
+                }
+                .frame(width: 50, height: 50)
             }
             .buttonStyle(PlainButtonStyle())
         }
-        .padding(16)
+        .padding(0)
         .padding(.horizontal, 0)
     }
 

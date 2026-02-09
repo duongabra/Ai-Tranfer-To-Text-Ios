@@ -29,20 +29,31 @@ class SubscriptionViewModel: ObservableObject {
     
     // MARK: - Load Subscription Status
     
-    /// Load subscription status từ RevenueCat (và cache lại)
+    /// Load subscription status từ RevenueCat (và cache lại). Nếu RevenueCat chưa sync (vd. vừa mua bằng StoreKit 2), fallback kiểm tra StoreKit.
     func refreshSubscriptionStatus() async {
         isLoading = true
         errorMessage = nil
         
         do {
-            let status = await RevenueCatService.shared.getSubscriptionStatus()
+            var status = await RevenueCatService.shared.getSubscriptionStatus()
             
-            // Cập nhật state
+            // Sau khi mua bằng StoreKit 2, RevenueCat có thể chưa sync kịp → kiểm tra StoreKit để hiển thị Pro ngay
+            if !status.hasAccess, let productId = await StoreKitService.shared.getCurrentSubscriptionProductId() {
+                let plan: SubscriptionPlan
+                if productId.contains("yearly") {
+                    plan = SubscriptionPlan(type: .yearly)
+                } else if productId.contains("monthly") {
+                    plan = SubscriptionPlan(type: .monthly)
+                } else if productId.contains("weekly") {
+                    plan = SubscriptionPlan(type: .weekly)
+                } else {
+                    plan = SubscriptionPlan(type: .monthly)
+                }
+                status = SubscriptionStatus(currentPlan: plan, isActive: true, expirationDate: nil)
+            }
+            
             subscriptionStatus = status
-            
-            // Cache lại
             saveToCache(status)
-            
         } catch {
             errorMessage = "Failed to load subscription: \(error.localizedDescription)"
         }

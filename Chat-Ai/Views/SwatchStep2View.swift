@@ -34,7 +34,7 @@ struct SwatchStep2View: View {
     @State private var step2ShowingState3 = false
     @State private var step2ShowingState4 = false
     @State private var step2MockProgress: CGFloat = 0
-    private let step2ProgressDuration: TimeInterval = 100
+    private let step2ProgressDuration: TimeInterval = 150
     @State private var step3ApiDone = false
     @State private var step3TimerDone = false
     @State private var step2SwatchResult: SwatchDetailResponse? = nil

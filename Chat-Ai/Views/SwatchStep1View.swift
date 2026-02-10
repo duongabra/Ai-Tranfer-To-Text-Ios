@@ -114,8 +114,8 @@ struct SwatchStep1View: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var authViewModel: AuthViewModel
 
-    /// Gọi khi user bấm "Add face photo" — parent chuyển sang Step 2
-    var onProceedToStep2: (() -> Void)?
+    /// Gọi khi user bấm "Add face photo" — parent chuyển sang Step 2, truyền url 2 ảnh son + brand/product/shade (có thể đã chỉnh)
+    var onProceedToStep2: ((_ lipstickURL1: String, _ lipstickURL2: String, _ brand: String, _ product: String, _ shade: String) -> Void)?
     /// Gọi khi user bấm nút X đóng màn (để ContentView chuyển tab và hiện lại tab bar)
     var onClose: (() -> Void)?
 
@@ -755,7 +755,7 @@ struct SwatchStep1View: View {
             }
             VStack(spacing: 12) {
                 Button(action: {
-                    onProceedToStep2?()
+                    onProceedToStep2?(lipstickImageURL1 ?? "", lipstickImageURL2 ?? "", step1State4Brand, step1State4Product, step1State4Shade)
                 }) {
                     Text("Add face photo")
                         .font(.custom("Overused Grotesk", size: 16).weight(.medium))
@@ -844,7 +844,7 @@ struct SwatchStep1View: View {
             Spacer(minLength: 0)
             Button(action: {
                 step1State4ShowEditView = false
-                onProceedToStep2?()
+                onProceedToStep2?(lipstickImageURL1 ?? "", lipstickImageURL2 ?? "", step1State4Brand, step1State4Product, step1State4Shade)
             }) {
                 Text("Save and add face photo")
                     .font(.custom("Overused Grotesk", size: 16).weight(.medium))

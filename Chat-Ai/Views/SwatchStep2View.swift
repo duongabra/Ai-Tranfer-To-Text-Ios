@@ -12,6 +12,13 @@ struct SwatchStep2View: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var authViewModel: AuthViewModel
 
+    /// Từ Step 1: 2 URL ảnh son + brand/product/shade (có thể đã chỉnh)
+    var lipstickURL1: String = ""
+    var lipstickURL2: String = ""
+    var lipstickBrand: String = ""
+    var lipstickProduct: String = ""
+    var lipstickShade: String = ""
+
     private let progressCornerRadius: CGFloat = 20
     private let progressFillColor = Color(hex: "030712")
     private let progressEmptyColor = Color(hex: "F9FAFB")
@@ -26,15 +33,26 @@ struct SwatchStep2View: View {
     @State private var step2ShowingState3 = false
     @State private var step2ShowingState4 = false
     @State private var step2MockProgress: CGFloat = 0
-    private let step2ProgressDuration: TimeInterval = 10
+    private let step2ProgressDuration: TimeInterval = 100
+    @State private var step3ApiDone = false
+    @State private var step3TimerDone = false
+    @State private var step2SwatchResult: SwatchDetailResponse? = nil
+    @State private var step2CreateSwatchError: String? = nil
+    @State private var step2ProgressTimer: Timer?
     @State private var step2State4LikeDislike: Bool? = nil // true = like, false = dislike
     @State private var step2BeforeAfterSliderPosition: CGFloat = 0.5 // 0 = all After, 1 = all Before
     @State private var step2SliderDragStartPosition: CGFloat? = nil
 
-    /// Lipstick info từ Step 1 (có thể truyền từ SwatchUploadView sau). Tạm dùng placeholder.
-    @State private var step2LipstickBrand = "MAC"
-    @State private var step2LipstickProduct = "Silky Matte Lipstick"
-    @State private var step2LipstickShade = "646 Marrakesh"
+    /// Validate face API: loading, result (is_valid + checks + issues), URL from upload (reuse for State 3)
+    @State private var step2ValidationLoading = false
+    @State private var step2ValidationResult: ValidateFaceResponse? = nil
+    @State private var step2FaceImageURLFromValidation: String? = nil
+    @State private var step2ValidationError: String? = nil
+
+    /// Lipstick info hiển thị ở Step 4: từ API GET (step2SwatchResult) hoặc từ Step 1 (lipstickBrand/Product/Shade)
+    private var step2LipstickBrand: String { step2SwatchResult?.brand ?? lipstickBrand }
+    private var step2LipstickProduct: String { step2SwatchResult?.product ?? lipstickProduct }
+    private var step2LipstickShade: String { step2SwatchResult?.shade ?? lipstickShade }
 
     private var isState2: Bool { faceImage != nil && !step2ShowingState3 && !step2ShowingState4 }
 
@@ -76,6 +94,37 @@ struct SwatchStep2View: View {
         } message: {
             Text(faceUploadErrorMessage ?? "Could not upload face photo.")
         }
+        .onDisappear {
+            step2ProgressTimer?.invalidate()
+            step2ProgressTimer = nil
+        }
+    }
+
+    /// Upload face → validate-face API. Khi vào State 2 có ảnh thì chạy; nếu is_valid enable "Yes", không thì disable + hiện issues.
+    private func runUploadAndValidateFace() {
+        guard let img = faceImage,
+              let userId = authViewModel.currentUser?.id,
+              let data = img.jpegData(compressionQuality: 0.85) else { return }
+        step2ValidationLoading = true
+        step2ValidationError = nil
+        step2ValidationResult = nil
+        step2FaceImageURLFromValidation = nil
+        Task {
+            do {
+                let url = try await SupabaseService.shared.uploadImageToStorage(userId: userId, imageData: data)
+                let result = try await SwatchAPIService.shared.validateFace(imageURL: url)
+                await MainActor.run {
+                    step2FaceImageURLFromValidation = url
+                    step2ValidationResult = result
+                    step2ValidationLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    step2ValidationError = error.localizedDescription
+                    step2ValidationLoading = false
+                }
+            }
+        }
     }
 
     private func uploadFaceImageThenGoToState3(_ image: UIImage) {
@@ -93,7 +142,9 @@ struct SwatchStep2View: View {
                     faceImageURL = url
                     isUploadingFace = false
                     step2ShowingState3 = true
-                    startStep2ProgressTimer()
+                    step3ApiDone = false
+                    step3TimerDone = false
+                    startCreateSwatchAndPoll()
                 }
             } catch {
                 await MainActor.run {
@@ -103,6 +154,111 @@ struct SwatchStep2View: View {
                 }
             }
         }
+    }
+
+    /// POST create swatch → lưu id → poll GET mỗi 3s. Progress 0→99% trong 100s; khi API xong nhảy 100% rồi sang State 4.
+    private func startCreateSwatchAndPoll() {
+        guard let barefaceUrl = step2FaceImageURLFromValidation else { return }
+        let lipstickUrls = [lipstickURL1, lipstickURL2].filter { !$0.isEmpty }
+        guard lipstickUrls.count >= 2 else {
+            step2CreateSwatchError = "Need 2 lipstick image URLs."
+            showFaceUploadErrorAlert = true
+            faceUploadErrorMessage = step2CreateSwatchError
+            return
+        }
+        step2MockProgress = 0
+        step2SwatchResult = nil
+        step2CreateSwatchError = nil
+        step2ProgressTimer?.invalidate()
+
+        Task {
+            do {
+                let createResponse = try await SwatchAPIService.shared.createSwatch(
+                    barefaceUrl: barefaceUrl,
+                    lipstickUrls: lipstickUrls,
+                    brand: lipstickBrand,
+                    product: lipstickProduct,
+                    shade: lipstickShade
+                )
+                guard let swatchId = createResponse.id else {
+                    await MainActor.run {
+                        step2ShowingState3 = false
+                        step2CreateSwatchError = "No swatch id in response."
+                        showFaceUploadErrorAlert = true
+                        faceUploadErrorMessage = step2CreateSwatchError
+                    }
+                    return
+                }
+                await MainActor.run { startStep2ProgressTimer100s() }
+                // Poll every 3s until status completed or swatch_url present
+                var pollCount = 0
+                while true {
+                    try await Task.sleep(nanoseconds: 3_000_000_000)
+                    pollCount += 1
+                    let detail = try await SwatchAPIService.shared.getSwatch(swatchId: swatchId)
+                    print("[SwatchStep2] Poll #\(pollCount) id: \(swatchId) GET /api/mobile/swatches/\(swatchId) — status: \(detail.status ?? "nil"), swatch_url: \(detail.swatchUrl ?? "nil")")
+                    let isDone = detail.status?.lowercased() == "completed" || detail.status?.lowercased() == "complete" || (detail.swatchUrl != nil && !(detail.swatchUrl?.isEmpty ?? true))
+                    if isDone {
+                        await MainActor.run {
+                            step2SwatchResult = detail
+                            step3ApiDone = true
+                            if step3TimerDone {
+                                step2MockProgress = 100
+                                step2ShowingState4 = true
+                                step2ProgressTimer?.invalidate()
+                            } else {
+                                startStep2RampTo100AndProceed()
+                            }
+                        }
+                        break
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    step2ShowingState3 = false
+                    step2CreateSwatchError = error.localizedDescription
+                    showFaceUploadErrorAlert = true
+                    faceUploadErrorMessage = step2CreateSwatchError
+                }
+            }
+        }
+    }
+
+    private func startStep2ProgressTimer100s() {
+        step2MockProgress = 0
+        let duration: TimeInterval = 100
+        step2ProgressTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
+            step2MockProgress += CGFloat(0.05 / duration) * 99
+            if step2MockProgress >= 99 {
+                step2ProgressTimer?.invalidate()
+                step2ProgressTimer = nil
+                step2MockProgress = 99
+                step3TimerDone = true
+                if step3ApiDone {
+                    step2MockProgress = 100
+                    step2ShowingState4 = true
+                }
+            }
+        }
+        RunLoop.main.add(step2ProgressTimer!, forMode: .common)
+    }
+
+    private func startStep2RampTo100AndProceed() {
+        step2ProgressTimer?.invalidate()
+        let startProgress = step2MockProgress
+        let startTime = Date()
+        step2ProgressTimer = Timer.scheduledTimer(withTimeInterval: 0.02, repeats: true) { _ in
+            let elapsed = Date().timeIntervalSince(startTime)
+            if elapsed >= 1 {
+                step2MockProgress = 100
+                step2ProgressTimer?.invalidate()
+                step2ProgressTimer = nil
+                step2ShowingState4 = true
+                return
+            }
+            step2MockProgress = startProgress + (100 - startProgress) * CGFloat(elapsed / 1)
+        }
+        RunLoop.main.add(step2ProgressTimer!, forMode: .common)
     }
 
     private func startStep2ProgressTimer() {
@@ -202,9 +358,9 @@ struct SwatchStep2View: View {
         .padding(.bottom, 8)
     }
 
-    // MARK: - State 4: Result before/after (Figma 55367-46384, image 55382-52638)
-    private static let step2BeforeURL = URL(string: "https://picsum.photos/335/446")
-    private static let step2AfterURL = URL(string: "https://picsum.photos/seed/after2/335/446")
+    // MARK: - State 4: Result before/after — bareface_url (Before), swatch_url (After), score, ai_description từ GET swatch
+    private var step2State4BeforeURL: URL? { (step2SwatchResult?.barefaceUrl).flatMap { URL(string: $0) } }
+    private var step2State4AfterURL: URL? { (step2SwatchResult?.swatchUrl).flatMap { URL(string: $0) } }
 
     private var step2State4Content: some View {
         VStack(alignment: .center, spacing: 20) {
@@ -214,10 +370,12 @@ struct SwatchStep2View: View {
             HStack(spacing: 16) {
                 Button(action: {
                     step2ShowingState4 = false
-                    step2ShowingState3 = false
-                    step2MockProgress = 0
                     step2ShowingState3 = true
-                    startStep2ProgressTimer()
+                    step2MockProgress = 0
+                    step3ApiDone = false
+                    step3TimerDone = false
+                    step2SwatchResult = nil
+                    startCreateSwatchAndPoll()
                 }) {
                     Image("step2_reset_swatch")
                         .resizable()
@@ -253,23 +411,23 @@ struct SwatchStep2View: View {
                 }
                 .buttonStyle(PlainButtonStyle())
             }
-            // Score card
+            // Score card — score + ai_description từ GET swatch
             HStack(alignment: .center, spacing: 12) {
                 ZStack {
                     Circle()
                         .stroke(Color(hex: "E5E7EB"), lineWidth: 6)
                         .frame(width: 56, height: 56)
                     Circle()
-                        .trim(from: 0, to: 0.8)
+                        .trim(from: 0, to: min(1, (step2SwatchResult?.score ?? 0) / 10))
                         .stroke(Color(hex: "30A159"), style: StrokeStyle(lineWidth: 6, lineCap: .round))
                         .frame(width: 56, height: 56)
                         .rotationEffect(.degrees(-90))
-                    Text("8/10")
+                    Text(step2SwatchResult?.score != nil ? "\(Int(step2SwatchResult!.score!))/10" : "—/10")
                         .font(.custom("Overused Grotesk", size: 14).weight(.medium))
                         .foregroundColor(Color(hex: "030712"))
                 }
                 .frame(width: 56, height: 56)
-                Text("Warm brick tones add definition to your lips while keeping a natural look.")
+                Text(step2SwatchResult?.aiDescription ?? "Generating your swatch...")
                     .font(.custom("Overused Grotesk", size: 14).weight(.regular))
                     .foregroundColor(Color(hex: "6A7282"))
                     .lineLimit(2)
@@ -348,29 +506,37 @@ struct SwatchStep2View: View {
             let width = geometry.size.width
             let height = geometry.size.height
             let dividerX = width * step2BeforeAfterSliderPosition
+            let beforeURL = step2State4BeforeURL
+            let afterURL = step2State4AfterURL
             ZStack(alignment: .leading) {
-                // After (right side) — full area
-                AsyncImage(url: Self.step2AfterURL) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFill()
-                    case .failure:
+                // After (right side) — swatch_url
+                Group {
+                    if let url = afterURL {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image): image.resizable().scaledToFill()
+                            case .failure: Color(hex: "F3F4F6")
+                            default: ProgressView()
+                            }
+                        }
+                    } else {
                         Color(hex: "F3F4F6")
-                    default:
-                        ProgressView()
                     }
                 }
                 .frame(width: width, height: height)
                 .clipped()
-                // Before (left side) — clipped to left of divider
-                AsyncImage(url: Self.step2BeforeURL) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFill()
-                    case .failure:
+                // Before (left side) — bareface_url
+                Group {
+                    if let url = beforeURL {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image): image.resizable().scaledToFill()
+                            case .failure: Color(hex: "F3F4F6")
+                            default: ProgressView()
+                            }
+                        }
+                    } else {
                         Color(hex: "F3F4F6")
-                    default:
-                        ProgressView()
                     }
                 }
                 .frame(width: width, height: height)
@@ -504,7 +670,7 @@ struct SwatchStep2View: View {
         .padding(.bottom, 24)
     }
 
-    // MARK: - State 2: Your photo looks good (Figma 55367-636) — preview from Storage
+    // MARK: - State 2: Your photo looks good (Figma 55367-636) — validate face → enable/disable Yes
     private var step2State2Content: some View {
         VStack(alignment: .center, spacing: 24) {
             Text("Your photo looks good")
@@ -520,13 +686,13 @@ struct SwatchStep2View: View {
                         .scaledToFit()
                         .frame(maxWidth: 165)
                         .overlay {
-                            if isUploadingFace {
+                            if isUploadingFace || step2ValidationLoading {
                                 Color.black.opacity(0.3)
                                 VStack(spacing: 12) {
                                     ProgressView()
                                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                         .scaleEffect(1.2)
-                                    Text("Uploading...")
+                                    Text(step2ValidationLoading ? "Checking photo..." : "Uploading...")
                                         .font(.custom("Overused Grotesk", size: 14).weight(.medium))
                                         .foregroundColor(.white)
                                 }
@@ -536,31 +702,64 @@ struct SwatchStep2View: View {
                 }
             }
 
+            // Validation: hiện checks từ API (✓/✗) hoặc rules mặc định khi đang loading
             VStack(alignment: .leading, spacing: 8) {
-                ruleRow(icon: "checkmark.circle.fill", text: "Face centered")
-                ruleRow(icon: "checkmark.circle.fill", text: "Good lighting")
-                ruleRow(icon: "checkmark.circle.fill", text: "Neutral expression")
+                if let result = step2ValidationResult, let checks = result.checks {
+                    step2ValidationCheckRow(ok: checks.faceCentered ?? false, text: "Face centered")
+                    step2ValidationCheckRow(ok: checks.goodLighting ?? false, text: "Good lighting")
+                    step2ValidationCheckRow(ok: checks.faceNotCovered ?? false, text: "Face not covered")
+                    step2ValidationCheckRow(ok: checks.neutralExpression ?? false, text: "Neutral expression")
+                    if let issues = result.issues, !issues.isEmpty {
+                        ForEach(issues, id: \.self) { issue in
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "exclamationmark.circle.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(Color(hex: "DC2626"))
+                                Text(issue)
+                                    .font(.custom("Overused Grotesk", size: 14).weight(.regular))
+                                    .foregroundColor(Color(hex: "6A7282"))
+                            }
+                        }
+                    }
+                } else {
+                    ruleRow(icon: "checkmark.circle.fill", text: "Face centered")
+                    ruleRow(icon: "checkmark.circle.fill", text: "Good lighting")
+                    ruleRow(icon: "checkmark.circle.fill", text: "Neutral expression")
+                }
+                if let err = step2ValidationError {
+                    Text(err)
+                        .font(.custom("Overused Grotesk", size: 14).weight(.regular))
+                        .foregroundColor(Color(hex: "DC2626"))
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(spacing: 12) {
                 Button(action: {
-                    guard let img = faceImage else { return }
-                    uploadFaceImageThenGoToState3(img)
+                    guard let url = step2FaceImageURLFromValidation, step2ValidationResult?.isValid == true else { return }
+                    faceImageURL = url
+                    step2ShowingState3 = true
+                    step3ApiDone = false
+                    step3TimerDone = false
+                    startCreateSwatchAndPoll()
                 }) {
                     Text("Yes, use this photo")
                         .font(.custom("Overused Grotesk", size: 16).weight(.medium))
-                        .foregroundColor(Color(hex: "F9FAFB"))
+                        .foregroundColor(step2ValidationResult?.isValid == true ? Color(hex: "F9FAFB") : Color(hex: "9CA3AF"))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                         .padding(.horizontal, 20)
-                        .background(Color(hex: "030712"))
+                        .background(step2ValidationResult?.isValid == true ? Color(hex: "030712") : Color(hex: "E5E7EB"))
                         .cornerRadius(9999)
                 }
                 .buttonStyle(PlainButtonStyle())
-                .disabled(isUploadingFace)
+                .disabled(isUploadingFace || step2ValidationLoading || step2ValidationResult?.isValid != true)
 
                 Button(action: {
+                    step2ValidationResult = nil
+                    step2ValidationLoading = false
+                    step2FaceImageURLFromValidation = nil
+                    step2ValidationError = nil
                     faceImage = nil
                     faceImageURL = nil
                 }) {
@@ -576,12 +775,27 @@ struct SwatchStep2View: View {
                         )
                 }
                 .buttonStyle(PlainButtonStyle())
-                .disabled(isUploadingFace)
+                .disabled(isUploadingFace || step2ValidationLoading)
             }
         }
         .padding(.horizontal, 20)
         .padding(.top, 8)
         .padding(.bottom, 24)
+        .task(id: faceImage?.pngData() ?? Data()) {
+            guard faceImage != nil, step2ValidationResult == nil, !step2ValidationLoading else { return }
+            runUploadAndValidateFace()
+        }
+    }
+
+    private func step2ValidationCheckRow(ok: Bool, text: String) -> some View {
+        HStack(alignment: .center, spacing: 8) {
+            Image(systemName: ok ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .font(.system(size: 16))
+                .foregroundColor(ok ? Color(hex: "30A159") : Color(hex: "DC2626"))
+            Text(text)
+                .font(.custom("Overused Grotesk", size: 14).weight(.regular))
+                .foregroundColor(Color(hex: "6A7282"))
+        }
     }
 
     /// State 3 image block per Figma 55367-46540: center 160x160 circle (100% round), 3 dashed rings, 3 icon buttons dịch vào

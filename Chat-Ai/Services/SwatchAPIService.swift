@@ -39,6 +39,104 @@ struct RecognizeLipstickRequest: Encodable {
     }
 }
 
+// MARK: - Validate Face (Step 2)
+
+/// Request body: POST /api/mobile/validate-face
+struct ValidateFaceRequest: Encodable {
+    let imageUrl: String
+
+    enum CodingKeys: String, CodingKey {
+        case imageUrl = "image_url"
+    }
+}
+
+/// Response: is_valid, score, checks, issues
+struct ValidateFaceResponse: Codable {
+    let isValid: Bool
+    let score: Double?
+    let checks: ValidateFaceChecks?
+    let issues: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case isValid = "is_valid"
+        case score
+        case checks
+        case issues
+    }
+}
+
+struct ValidateFaceChecks: Codable {
+    let faceCentered: Bool?
+    let faceNotCovered: Bool?
+    let goodLighting: Bool?
+    let neutralExpression: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case faceCentered = "face_centered"
+        case faceNotCovered = "face_not_covered"
+        case goodLighting = "good_lighting"
+        case neutralExpression = "neutral_expression"
+    }
+}
+
+// MARK: - Create Swatch (Step 3) + Get Swatch (polling)
+
+/// Request: POST /api/mobile/swatches
+struct CreateSwatchRequest: Encodable {
+    let barefaceUrl: String
+    let lipstickUrls: [String]
+    let brand: String
+    let product: String
+    let shade: String
+
+    enum CodingKeys: String, CodingKey {
+        case barefaceUrl = "bareface_url"
+        case lipstickUrls = "lipstick_urls"
+        case brand
+        case product
+        case shade
+    }
+}
+
+/// Response: POST create + GET by id (same shape)
+struct SwatchDetailResponse: Codable {
+    let id: String?
+    let userId: String?
+    let status: String?
+    let errorMessage: String?
+    let barefaceUrl: String?
+    let lipstickUrls: [String]?
+    let swatchUrl: String?
+    let brand: String?
+    let product: String?
+    let shade: String?
+    let hexCode: String?
+    let score: Double?
+    let aiDescription: String?
+    let isFavorited: Bool?
+    let feedback: Bool?
+    let createdAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userId = "user_id"
+        case status
+        case errorMessage = "error_message"
+        case barefaceUrl = "bareface_url"
+        case lipstickUrls = "lipstick_urls"
+        case swatchUrl = "swatch_url"
+        case brand
+        case product
+        case shade
+        case hexCode = "hex_code"
+        case score
+        case aiDescription = "ai_description"
+        case isFavorited = "is_favorited"
+        case feedback
+        case createdAt = "created_at"
+    }
+}
+
 enum SwatchAPIError: LocalizedError {
     case invalidURL
     case invalidResponse
@@ -104,5 +202,89 @@ actor SwatchAPIService {
         } catch {
             throw SwatchAPIError.decoding(error)
         }
+    }
+
+    /// Validate face image for swatch. Returns is_valid and checklist (face_centered, good_lighting, etc.).
+    func validateFace(imageURL: String) async throws -> ValidateFaceResponse {
+        let urlString = baseURL
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            + "/api/mobile/validate-face"
+        guard let url = URL(string: urlString) else {
+            throw SwatchAPIError.invalidURL
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let token = await AuthService.shared.getAccessToken() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        request.httpBody = try JSONEncoder().encode(ValidateFaceRequest(imageUrl: imageURL))
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw SwatchAPIError.invalidResponse
+        }
+        guard (200...299).contains(http.statusCode) else {
+            if let body = String(data: data, encoding: .utf8) {
+                print("[SwatchAPI] validate-face HTTP \(http.statusCode) body: \(body)")
+            }
+            throw SwatchAPIError.httpStatus(http.statusCode)
+        }
+        do {
+            return try JSONDecoder().decode(ValidateFaceResponse.self, from: data)
+        } catch {
+            throw SwatchAPIError.decoding(error)
+        }
+    }
+
+    /// Create swatch and start generation. Returns id + status='processing'. Poll GET by id until completed.
+    func createSwatch(barefaceUrl: String, lipstickUrls: [String], brand: String, product: String, shade: String) async throws -> SwatchDetailResponse {
+        let urlString = baseURL
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            + "/api/mobile/swatches"
+        guard let url = URL(string: urlString) else { throw SwatchAPIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let token = await AuthService.shared.getAccessToken() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        request.httpBody = try JSONEncoder().encode(CreateSwatchRequest(
+            barefaceUrl: barefaceUrl,
+            lipstickUrls: lipstickUrls,
+            brand: brand,
+            product: product,
+            shade: shade
+        ))
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw SwatchAPIError.invalidResponse }
+        guard (200...299).contains(http.statusCode) else {
+            if let body = String(data: data, encoding: .utf8) { print("[SwatchAPI] create swatch HTTP \(http.statusCode) body: \(body)") }
+            throw SwatchAPIError.httpStatus(http.statusCode)
+        }
+        return try JSONDecoder().decode(SwatchDetailResponse.self, from: data)
+    }
+
+    /// Get swatch by id (for polling). Returns status, bareface_url, swatch_url, score, ai_description, etc.
+    func getSwatch(swatchId: String) async throws -> SwatchDetailResponse {
+        let urlString = baseURL
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            + "/api/mobile/swatches/\(swatchId)"
+        guard let url = URL(string: urlString) else { throw SwatchAPIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let token = await AuthService.shared.getAccessToken() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw SwatchAPIError.invalidResponse }
+        guard (200...299).contains(http.statusCode) else {
+            if let body = String(data: data, encoding: .utf8) { print("[SwatchAPI] get swatch HTTP \(http.statusCode) body: \(body)") }
+            throw SwatchAPIError.httpStatus(http.statusCode)
+        }
+        return try JSONDecoder().decode(SwatchDetailResponse.self, from: data)
     }
 }

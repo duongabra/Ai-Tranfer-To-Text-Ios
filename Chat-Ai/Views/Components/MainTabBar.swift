@@ -24,8 +24,9 @@ struct MainTabBar: View {
             tabItem(index: 1, iconName: "tab_lipstick", isSelected: selectedTab == 1) {
                 selectedTab = 1
             }
-            tabItem(index: 2, iconName: "tab_profile", isSelected: selectedTab == 2) {
-                selectedTab = 2
+            // Tab cuối = màn List (chưa làm, bấm vào không làm gì)
+            tabItem(index: 2, iconName: "tab_profile", isSelected: false) {
+                // List screen chưa có, không chuyển tab
             }
         }
         .padding(.horizontal, horizontalPadding)

@@ -140,7 +140,7 @@ struct SwatchStep1View: View {
     @State private var mockProgressTotal: CGFloat = 0
     @State private var mockTimer: Timer?
     /// Progress chạy 0→99% trong 50s. Hết 50s mà API chưa xong thì đứng ở 99%, khi API xong nhảy lên 100% rồi chuyển State 4. API xong sớm thì ramp 100% trong 1s rồi chuyển.
-    private let mockDuration: TimeInterval = 50
+    private let mockDuration: TimeInterval = 33
 
     // State 4: lipstick details từ API (editable), edit mode, and which field is being edited
     @State private var step1State4Brand = ""

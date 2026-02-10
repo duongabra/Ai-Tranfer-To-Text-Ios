@@ -287,4 +287,25 @@ actor SwatchAPIService {
         }
         return try JSONDecoder().decode(SwatchDetailResponse.self, from: data)
     }
+
+    /// Regenerate swatch with same inputs. Returns new swatch detail (id, status, ...). Poll GET by id until completed.
+    func regenerateSwatch(swatchId: String) async throws -> SwatchDetailResponse {
+        let urlString = baseURL
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            + "/api/mobile/swatches/\(swatchId)/regenerate"
+        guard let url = URL(string: urlString) else { throw SwatchAPIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let token = await AuthService.shared.getAccessToken() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw SwatchAPIError.invalidResponse }
+        guard (200...299).contains(http.statusCode) else {
+            if let body = String(data: data, encoding: .utf8) { print("[SwatchAPI] regenerate HTTP \(http.statusCode) body: \(body)") }
+            throw SwatchAPIError.httpStatus(http.statusCode)
+        }
+        return try JSONDecoder().decode(SwatchDetailResponse.self, from: data)
+    }
 }

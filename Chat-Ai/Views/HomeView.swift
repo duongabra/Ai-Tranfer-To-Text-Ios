@@ -66,7 +66,7 @@ struct HomeView: View {
 
             Spacer(minLength: 0)
 
-            // Avatar + badge Pro/Free: bấm vào → Profile
+            // Avatar + badge Pro/Free: bấm vào → Profile (tab bar sẽ ẩn khi ở màn Profile)
             NavigationLink(destination: ProfileView()) {
                 ZStack {
                     VStack(alignment: .center, spacing: 0) {

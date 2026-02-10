@@ -153,18 +153,18 @@ struct PaywallView: View {
                 }
             } else {
             ScrollView {
-                VStack(spacing: 20) {
-                    // Chưa subscribe
-                        // MARK: - Group Icon (chưa subscribe)
-                        Image("art_illustration")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 358, height: 200)
-                            .padding(.top, 20)
-                    }
+                VStack(spacing: 0) {
+                    // MARK: - Hero (LoginHero thay art_illustration)
+                    Image("LoginHero")
+                        .resizable()
+                        .scaledToFill()
+                        .frame(height: 200)
+                        .frame(maxWidth: .infinity)
+                        .clipped()
+                        .padding(.top, 20)
                     
                     if !hasActiveSubscription {
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: 8) {
                             Text("Go Pro - Try any lipstick with AI")
                                 .font(.custom("Overused Grotesk", size: 24))
                                 .fontWeight(.medium)
@@ -179,6 +179,7 @@ struct PaywallView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 20)
+                        .padding(.top, 24)
                     }
                     
                     // MARK: - Features (Figma: lipstick, ai, check + label-sm #101828)
@@ -190,6 +191,7 @@ struct PaywallView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 20)
+                        .padding(.top, 24)
                     }
                     
                     // MARK: - Plans (chỉ hiển thị khi chưa có subscription)
@@ -198,7 +200,7 @@ struct PaywallView: View {
                             ProgressView("Loading plans...")
                                 .padding()
                         } else {
-                            VStack(spacing: 12) {
+                            VStack(spacing: 16) {
                                 // Sắp xếp: monthly lên trước, sau đó weekly
                                 ForEach(availablePlans.filter { $0.isPremium }.sorted { plan1, plan2 in
                                     if plan1.type == .monthly { return true }
@@ -216,6 +218,7 @@ struct PaywallView: View {
                                 }
                             }
                             .padding(.horizontal, 20)
+                            .padding(.top, 24)
                         }
                     }
                     
@@ -299,6 +302,7 @@ struct PaywallView: View {
                             // .multilineTextAlignment(.center)
                         }
                         .padding(.horizontal, 20)
+                        .padding(.top, 24)
                     }
                     
                     // MARK: - Buttons (chưa subscribe: Upgrade to Pro)
@@ -340,6 +344,7 @@ struct PaywallView: View {
                             // .padding(.vertical, 10)
                     }
                     .padding(.horizontal, 20)
+                    .padding(.top, 24)
                     
                     // MARK: - Error Message
                     if let errorMessage = errorMessage {
@@ -366,7 +371,8 @@ struct PaywallView: View {
                                 .foregroundColor(Color(hex: "6A7282"))
                         }
                     }
-                    .padding(.bottom, 20)
+                    .padding(.top, 16)
+                    .padding(.bottom, 24)
                 }
             }
             
@@ -385,6 +391,7 @@ struct PaywallView: View {
                 .clipShape(Circle())
                 .padding(.top, 8)
                 .padding(.leading, 20)
+            }
             }
         }
         .navigationBarTitleDisplayMode(.inline)

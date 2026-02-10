@@ -40,7 +40,8 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onPreferenceChange(HideTabBarKey.self) { hideTabBar = $0 }
 
-            if !hideTabBar {
+            // Tab bar chỉ hiện ở màn Home (selectedTab == 0)
+            if !hideTabBar, selectedTab == 0 {
                 MainTabBar(selectedTab: $selectedTab)
                     .padding(.horizontal, 24)
                     .padding(.bottom, 24)

@@ -43,6 +43,7 @@ struct ProfileView: View {
             if !isEmbeddedInTab { closeButton }
         }
         .navigationBarHidden(true)
+        .preference(key: HideTabBarKey.self, value: true)
         .onAppear {
             Task { await subscriptionViewModel.loadSubscriptionStatus(forceRefresh: true) }
         }

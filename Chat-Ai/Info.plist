@@ -10,6 +10,8 @@
 	<string>This app needs permission to save photos to your library.</string>
 	<key>AI_API_KEY</key>
 	<string>$(AI_API_KEY)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Lipstick AI</string>
 	<key>CFBundleGetInfoString</key>
 	<string></string>
 	<key>CFBundleIconName</key>

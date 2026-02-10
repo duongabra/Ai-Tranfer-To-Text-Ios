@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import Photos
 
 struct SwatchStep2View: View {
     @Environment(\.dismiss) private var dismiss
@@ -42,6 +43,10 @@ struct SwatchStep2View: View {
     @State private var step2State4LikeDislike: Bool? = nil // true = like, false = dislike
     @State private var step2BeforeAfterSliderPosition: CGFloat = 0.5 // 0 = all After, 1 = all Before
     @State private var step2SliderDragStartPosition: CGFloat? = nil
+    @State private var step2DownloadingImage = false
+    @State private var showStep2DownloadSuccessAlert = false
+    @State private var showStep2DownloadErrorAlert = false
+    @State private var step2DownloadErrorMessage: String? = nil
 
     /// Validate face API: loading, result (is_valid + checks + issues), URL from upload (reuse for State 3)
     @State private var step2ValidationLoading = false
@@ -93,6 +98,16 @@ struct SwatchStep2View: View {
             }
         } message: {
             Text(faceUploadErrorMessage ?? "Could not upload face photo.")
+        }
+        .alert("Saved", isPresented: $showStep2DownloadSuccessAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Swatch image saved to your photo library.")
+        }
+        .alert("Download failed", isPresented: $showStep2DownloadErrorAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(step2DownloadErrorMessage ?? "Could not save image.")
         }
         .onDisappear {
             step2ProgressTimer?.invalidate()
@@ -224,6 +239,59 @@ struct SwatchStep2View: View {
         }
     }
 
+    /// POST regenerate → lấy id mới → poll GET mỗi 3s. Quay Step 3, progress 0→99% trong 100s, xong nhảy 100% sang Step 4.
+    private func startRegenerateAndPoll(swatchId: String) {
+        step2MockProgress = 0
+        step2SwatchResult = nil
+        step2CreateSwatchError = nil
+        step2ProgressTimer?.invalidate()
+
+        Task {
+            do {
+                let regenResponse = try await SwatchAPIService.shared.regenerateSwatch(swatchId: swatchId)
+                guard let newId = regenResponse.id else {
+                    await MainActor.run {
+                        step2ShowingState3 = false
+                        step2CreateSwatchError = "No swatch id in regenerate response."
+                        showFaceUploadErrorAlert = true
+                        faceUploadErrorMessage = step2CreateSwatchError
+                    }
+                    return
+                }
+                await MainActor.run { startStep2ProgressTimer100s() }
+                var pollCount = 0
+                while true {
+                    try await Task.sleep(nanoseconds: 3_000_000_000)
+                    pollCount += 1
+                    let detail = try await SwatchAPIService.shared.getSwatch(swatchId: newId)
+                    print("[SwatchStep2] Regenerate Poll #\(pollCount) id: \(newId) GET /api/mobile/swatches/\(newId) — status: \(detail.status ?? "nil"), swatch_url: \(detail.swatchUrl ?? "nil")")
+                    let isDone = detail.status?.lowercased() == "completed" || detail.status?.lowercased() == "complete" || (detail.swatchUrl != nil && !(detail.swatchUrl?.isEmpty ?? true))
+                    if isDone {
+                        await MainActor.run {
+                            step2SwatchResult = detail
+                            step3ApiDone = true
+                            if step3TimerDone {
+                                step2MockProgress = 100
+                                step2ShowingState4 = true
+                                step2ProgressTimer?.invalidate()
+                            } else {
+                                startStep2RampTo100AndProceed()
+                            }
+                        }
+                        break
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    step2ShowingState3 = false
+                    step2CreateSwatchError = error.localizedDescription
+                    showFaceUploadErrorAlert = true
+                    faceUploadErrorMessage = step2CreateSwatchError
+                }
+            }
+        }
+    }
+
     private func startStep2ProgressTimer100s() {
         step2MockProgress = 0
         let duration: TimeInterval = 100
@@ -259,6 +327,150 @@ struct SwatchStep2View: View {
             step2MockProgress = startProgress + (100 - startProgress) * CGFloat(elapsed / 1)
         }
         RunLoop.main.add(step2ProgressTimer!, forMode: .common)
+    }
+
+    /// Tải ảnh swatch (swatch_url) và lưu vào thư viện ảnh. Kiểm tra quyền đúng: addOnly (iOS 14+), xử lý denied/restricted.
+    private func downloadSwatchImageToPhotoLibrary() {
+        guard let urlString = step2SwatchResult?.swatchUrl, let url = URL(string: urlString) else {
+            step2DownloadErrorMessage = "No image to download."
+            showStep2DownloadErrorAlert = true
+            return
+        }
+        step2DownloadingImage = true
+        step2DownloadErrorMessage = nil
+        Task {
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                guard let image = UIImage(data: data) else {
+                    await MainActor.run {
+                        step2DownloadingImage = false
+                        step2DownloadErrorMessage = "Invalid image data."
+                        showStep2DownloadErrorAlert = true
+                    }
+                    return
+                }
+                await performSaveImageToPhotoLibrary(image)
+            } catch {
+                await MainActor.run {
+                    step2DownloadingImage = false
+                    step2DownloadErrorMessage = error.localizedDescription
+                    showStep2DownloadErrorAlert = true
+                }
+            }
+        }
+    }
+
+    /// Kiểm tra quyền (addOnly khi có, fallback iOS 13) rồi lưu ảnh. Info.plist cần NSPhotoLibraryAddUsageDescription.
+    private func performSaveImageToPhotoLibrary(_ image: UIImage) async {
+        func saveImage() {
+            PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.creationRequestForAsset(from: image)
+            } completionHandler: { ok, error in
+                DispatchQueue.main.async {
+                    if ok {
+                        showStep2DownloadSuccessAlert = true
+                    } else {
+                        step2DownloadErrorMessage = error?.localizedDescription ?? "Could not save to photo library."
+                        showStep2DownloadErrorAlert = true
+                    }
+                    step2DownloadingImage = false
+                }
+            }
+        }
+
+        if #available(iOS 14, *) {
+            let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+            switch status {
+            case .authorized, .limited:
+                saveImage()
+            case .denied:
+                await MainActor.run {
+                    step2DownloadingImage = false
+                    step2DownloadErrorMessage = "Photo library access was denied. You can enable it in Settings."
+                    showStep2DownloadErrorAlert = true
+                }
+            case .restricted:
+                await MainActor.run {
+                    step2DownloadingImage = false
+                    step2DownloadErrorMessage = "Photo library access is restricted (e.g. parental controls)."
+                    showStep2DownloadErrorAlert = true
+                }
+            case .notDetermined:
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    PHPhotoLibrary.requestAuthorization(for: .addOnly) { newStatus in
+                        DispatchQueue.main.async {
+                            switch newStatus {
+                            case .authorized, .limited:
+                                saveImage()
+                            case .denied:
+                                step2DownloadingImage = false
+                                step2DownloadErrorMessage = "Photo library access was denied. You can enable it in Settings."
+                                showStep2DownloadErrorAlert = true
+                            case .restricted:
+                                step2DownloadingImage = false
+                                step2DownloadErrorMessage = "Photo library access is restricted."
+                                showStep2DownloadErrorAlert = true
+                            case .notDetermined:
+                                step2DownloadingImage = false
+                                step2DownloadErrorMessage = "Photo library access was not granted."
+                                showStep2DownloadErrorAlert = true
+                            @unknown default:
+                                step2DownloadingImage = false
+                                step2DownloadErrorMessage = "Unknown photo library status."
+                                showStep2DownloadErrorAlert = true
+                            }
+                            continuation.resume()
+                        }
+                    }
+                }
+            @unknown default:
+                await MainActor.run {
+                    step2DownloadingImage = false
+                    step2DownloadErrorMessage = "Unknown photo library status."
+                    showStep2DownloadErrorAlert = true
+                }
+            }
+        } else {
+            let status = PHPhotoLibrary.authorizationStatus()
+            switch status {
+            case .authorized:
+                saveImage()
+            case .denied:
+                await MainActor.run {
+                    step2DownloadingImage = false
+                    step2DownloadErrorMessage = "Photo library access was denied. You can enable it in Settings."
+                    showStep2DownloadErrorAlert = true
+                }
+            case .restricted:
+                await MainActor.run {
+                    step2DownloadingImage = false
+                    step2DownloadErrorMessage = "Photo library access is restricted."
+                    showStep2DownloadErrorAlert = true
+                }
+            case .notDetermined:
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    PHPhotoLibrary.requestAuthorization { newStatus in
+                        DispatchQueue.main.async {
+                            switch newStatus {
+                            case .authorized:
+                                saveImage()
+                            default:
+                                step2DownloadingImage = false
+                                step2DownloadErrorMessage = "Photo library access was not granted. You can enable it in Settings."
+                                showStep2DownloadErrorAlert = true
+                            }
+                            continuation.resume()
+                        }
+                    }
+                }
+            @unknown default:
+                await MainActor.run {
+                    step2DownloadingImage = false
+                    step2DownloadErrorMessage = "Unknown photo library status."
+                    showStep2DownloadErrorAlert = true
+                }
+            }
+        }
     }
 
     private func startStep2ProgressTimer() {
@@ -369,13 +581,13 @@ struct SwatchStep2View: View {
             // Action buttons: Reset, Download, Heart (order per design)
             HStack(spacing: 16) {
                 Button(action: {
+                    guard let currentSwatchId = step2SwatchResult?.id else { return }
                     step2ShowingState4 = false
                     step2ShowingState3 = true
                     step2MockProgress = 0
                     step3ApiDone = false
                     step3TimerDone = false
-                    step2SwatchResult = nil
-                    startCreateSwatchAndPoll()
+                    startRegenerateAndPoll(swatchId: currentSwatchId)
                 }) {
                     Image("step2_reset_swatch")
                         .resizable()
@@ -387,7 +599,7 @@ struct SwatchStep2View: View {
                         .cornerRadius(9999)
                 }
                 .buttonStyle(PlainButtonStyle())
-                Button(action: { /* TODO: download result image */ }) {
+                Button(action: { downloadSwatchImageToPhotoLibrary() }) {
                     Image("step2_down_swatch")
                         .renderingMode(Image.TemplateRenderingMode.template)
                         .resizable()
@@ -399,6 +611,7 @@ struct SwatchStep2View: View {
                         .cornerRadius(9999)
                 }
                 .buttonStyle(PlainButtonStyle())
+                .disabled(step2DownloadingImage || step2SwatchResult?.swatchUrl == nil)
                 Button(action: { /* TODO: favorite */ }) {
                     Image("step2_heart_swatch")
                         .resizable()
@@ -702,34 +915,44 @@ struct SwatchStep2View: View {
                 }
             }
 
-            // Validation: hiện checks từ API (✓/✗) hoặc rules mặc định khi đang loading
+            // Validation: thành công → 3 dòng ✓ (ảnh 2); thất bại → API trả gì hiện đó, icon X (không dùng !)
             VStack(alignment: .leading, spacing: 8) {
                 if let result = step2ValidationResult, let checks = result.checks {
-                    step2ValidationCheckRow(ok: checks.faceCentered ?? false, text: "Face centered")
-                    step2ValidationCheckRow(ok: checks.goodLighting ?? false, text: "Good lighting")
-                    step2ValidationCheckRow(ok: checks.faceNotCovered ?? false, text: "Face not covered")
-                    step2ValidationCheckRow(ok: checks.neutralExpression ?? false, text: "Neutral expression")
-                    if let issues = result.issues, !issues.isEmpty {
-                        ForEach(issues, id: \.self) { issue in
-                            HStack(alignment: .top, spacing: 8) {
-                                Image(systemName: "exclamationmark.circle.fill")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(Color(hex: "DC2626"))
-                                Text(issue)
-                                    .font(.custom("Overused Grotesk", size: 14).weight(.regular))
-                                    .foregroundColor(Color(hex: "6A7282"))
+                    if result.isValid == true {
+                        // Thành công: chỉ hiện 3 dòng như ảnh 2
+                        ruleRow(icon: "checkmark.circle.fill", text: "Face centered")
+                        ruleRow(icon: "checkmark.circle.fill", text: "Good lighting")
+                        ruleRow(icon: "checkmark.circle.fill", text: "Neutral expression")
+                    } else {
+                        // Thất bại: chỉ hiện nội dung API trả về (issues), không hiện 4 dòng Face centered / Good lighting / ...
+                        if let issues = result.issues, !issues.isEmpty {
+                            ForEach(issues, id: \.self) { issue in
+                                HStack(alignment: .top, spacing: 8) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(Color(hex: "DC2626"))
+                                    Text(issue)
+                                        .font(.custom("Overused Grotesk", size: 14).weight(.regular))
+                                        .foregroundColor(Color(hex: "6A7282"))
+                                }
                             }
                         }
                     }
                 } else {
+                    // Đang loading / chưa có result: placeholder 3 dòng
                     ruleRow(icon: "checkmark.circle.fill", text: "Face centered")
                     ruleRow(icon: "checkmark.circle.fill", text: "Good lighting")
                     ruleRow(icon: "checkmark.circle.fill", text: "Neutral expression")
                 }
                 if let err = step2ValidationError {
-                    Text(err)
-                        .font(.custom("Overused Grotesk", size: 14).weight(.regular))
-                        .foregroundColor(Color(hex: "DC2626"))
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(Color(hex: "DC2626"))
+                        Text(err)
+                            .font(.custom("Overused Grotesk", size: 14).weight(.regular))
+                            .foregroundColor(Color(hex: "DC2626"))
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

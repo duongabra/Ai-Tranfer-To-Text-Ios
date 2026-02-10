@@ -140,13 +140,19 @@ struct SwatchDetailView: View {
     }
 
     private var beforeImage: some View {
-        AsyncImage(url: URL(string: swatch.barefaceUrl)) { phase in
-            switch phase {
-            case .success(let image):
-                image.resizable().scaledToFill()
-            case .failure, .empty:
-                Color(hex: "F3F4F6")
-            @unknown default:
+        Group {
+            if let url = URL(string: swatch.barefaceUrl), !swatch.barefaceUrl.isEmpty {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFill()
+                    case .failure:
+                        Color(hex: "F3F4F6")
+                    default:
+                        ProgressView()
+                    }
+                }
+            } else {
                 Color(hex: "F3F4F6")
             }
         }
@@ -154,15 +160,15 @@ struct SwatchDetailView: View {
 
     private var afterImage: some View {
         Group {
-            if let swatchUrl = swatch.swatchUrl, let url = URL(string: swatchUrl) {
+            if let swatchUrl = swatch.swatchUrl, !swatchUrl.isEmpty, let url = URL(string: swatchUrl) {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .success(let image):
                         image.resizable().scaledToFill()
-                    case .failure, .empty:
+                    case .failure:
                         Color(hex: "F3F4F6")
-                    @unknown default:
-                        Color(hex: "F3F4F6")
+                    default:
+                        ProgressView()
                     }
                 }
             } else {

@@ -134,12 +134,13 @@ struct SwatchStep1View: View {
     @State private var showUploadErrorAlert = false
     /// API recognize xong → cập nhật brand/product/shade, set true. Kết hợp với state3TimerDone để chuyển State 4.
     @State private var state3ApiDone = false
-    /// Timer 10s chạy xong → set true. Chỉ chuyển State 4 khi cả state3ApiDone và state3TimerDone đều true.
+    /// Timer 50s chạy xong (hoặc đã ramp 1s khi API xong sớm) → set true. Chỉ chuyển State 4 khi cả state3ApiDone và state3TimerDone đều true.
     @State private var state3TimerDone = false
 
     @State private var mockProgressTotal: CGFloat = 0
     @State private var mockTimer: Timer?
-    private let mockDuration: TimeInterval = 10
+    /// Progress chạy 0→99% trong 50s. Hết 50s mà API chưa xong thì đứng ở 99%, khi API xong nhảy lên 100% rồi chuyển State 4. API xong sớm thì ramp 100% trong 1s rồi chuyển.
+    private let mockDuration: TimeInterval = 50
 
     // State 4: lipstick details từ API (editable), edit mode, and which field is being edited
     @State private var step1State4Brand = ""
@@ -576,7 +577,12 @@ struct SwatchStep1View: View {
                     step1State4Shade = result.shade ?? ""
                     state3ApiDone = true
                     if state3TimerDone {
+                        // Đang đứng ở 99% chờ API → nhảy lên 100% rồi chuyển State 4
+                        mockProgressTotal = 100
                         step1ShowingState4 = true
+                    } else {
+                        // API xong trước 50s → ramp progress lên 100% trong 1s rồi chuyển State 4
+                        startRampTo100AndProceed()
                     }
                 }
             } catch {
@@ -596,16 +602,38 @@ struct SwatchStep1View: View {
         mockProgressTotal = 0
         mockTimer?.invalidate()
         mockTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
-            mockProgressTotal += CGFloat(0.05 / mockDuration) * 100
-            if mockProgressTotal >= 100 {
+            mockProgressTotal += CGFloat(0.05 / mockDuration) * 99
+            if mockProgressTotal >= 99 {
                 mockTimer?.invalidate()
                 mockTimer = nil
-                mockProgressTotal = 100
+                mockProgressTotal = 99
                 state3TimerDone = true
                 if state3ApiDone {
+                    mockProgressTotal = 100
                     step1ShowingState4 = true
                 }
+                // Hết 50s mà API chưa xong: progress đứng ở 99%, khi API xong sẽ nhảy lên 100% (xử lý ở block API return)
             }
+        }
+        RunLoop.main.add(mockTimer!, forMode: .common)
+    }
+
+    /// API xong trước 50s: tắt timer chậm, tăng progress từ hiện tại lên 100% trong 1s rồi chuyển State 4.
+    private func startRampTo100AndProceed() {
+        mockTimer?.invalidate()
+        let startProgress = mockProgressTotal
+        let startTime = Date()
+        mockTimer = Timer.scheduledTimer(withTimeInterval: 0.02, repeats: true) { _ in
+            let elapsed = Date().timeIntervalSince(startTime)
+            if elapsed >= 1 {
+                mockProgressTotal = 100
+                mockTimer?.invalidate()
+                mockTimer = nil
+                state3TimerDone = true
+                step1ShowingState4 = true
+                return
+            }
+            mockProgressTotal = startProgress + (100 - startProgress) * CGFloat(elapsed / 1)
         }
         RunLoop.main.add(mockTimer!, forMode: .common)
     }

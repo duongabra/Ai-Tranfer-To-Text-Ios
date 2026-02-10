@@ -229,7 +229,7 @@ extension Product.SubscriptionPeriod.Unit {
 
 // MARK: - RevenueCat SubscriptionPeriod.Unit Extension
 
-extension SubscriptionPeriod.Unit {
+extension RevenueCat.SubscriptionPeriod.Unit {
     var localizedString: String {
         switch self {
         case .day:

@@ -2,7 +2,7 @@
 //  ContentView.swift
 //  Chat-Ai
 //
-//  Main content: 3 tabs (Home, Swatch, Profile) + bottom tab bar (Figma 55496-2094).
+//  Main content: 3 tabs (Home, Swatch Upload, My Swatches) + bottom tab bar (Figma 55496-2094).
 //
 
 import SwiftUI
@@ -34,14 +34,14 @@ struct ContentView: View {
                     }
                     .navigationViewStyle(StackNavigationViewStyle())
                 } else {
-                    ProfileView(isEmbeddedInTab: true)
+                    MySwatchesView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onPreferenceChange(HideTabBarKey.self) { hideTabBar = $0 }
 
-            // Tab bar chỉ hiện ở màn Home (selectedTab == 0)
-            if !hideTabBar, selectedTab == 0 {
+            // Tab bar hiện ở màn Home và màn List (My Swatches), ẩn khi vào Swatch
+            if !hideTabBar, (selectedTab == 0 || selectedTab == 2) {
                 MainTabBar(selectedTab: $selectedTab)
                     .padding(.horizontal, 24)
                     .padding(.bottom, 24)

@@ -52,6 +52,10 @@ struct AppConfig {
     
     static let revenueCatAPIKey = infoPlistValue(for: "REVENUECAT_API_KEY")
     
+    // MARK: - Swatch / Lipstick Recognition API (local BE)
+    
+    static let swatchAPIBaseURL = infoPlistValue(for: "SWATCH_API_BASE_URL")
+    
     // Chọn loại AI service muốn dùng
     enum AIProvider {
         case groq    // Groq API (miễn phí, nhanh)

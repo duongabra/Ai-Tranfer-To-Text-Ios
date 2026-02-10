@@ -116,6 +116,8 @@ struct SwatchStep1View: View {
 
     /// Gọi khi user bấm "Add face photo" — parent chuyển sang Step 2
     var onProceedToStep2: (() -> Void)?
+    /// Gọi khi user bấm nút X đóng màn (để ContentView chuyển tab và hiện lại tab bar)
+    var onClose: (() -> Void)?
 
     @State private var lipstickImage1: UIImage?
     @State private var lipstickImage2: UIImage?
@@ -130,15 +132,19 @@ struct SwatchStep1View: View {
     @State private var step1ShowingFirstPhotoReview = false
     @State private var state3UploadError: String?
     @State private var showUploadErrorAlert = false
+    /// API recognize xong → cập nhật brand/product/shade, set true. Kết hợp với state3TimerDone để chuyển State 4.
+    @State private var state3ApiDone = false
+    /// Timer 10s chạy xong → set true. Chỉ chuyển State 4 khi cả state3ApiDone và state3TimerDone đều true.
+    @State private var state3TimerDone = false
 
     @State private var mockProgressTotal: CGFloat = 0
     @State private var mockTimer: Timer?
     private let mockDuration: TimeInterval = 10
 
-    // State 4: lipstick details (editable), edit mode, and which field is being edited
-    @State private var step1State4Brand = "MAC"
-    @State private var step1State4Product = "Silky Matte Lipstick"
-    @State private var step1State4Shade = "646 Marrakesh"
+    // State 4: lipstick details từ API (editable), edit mode, and which field is being edited
+    @State private var step1State4Brand = ""
+    @State private var step1State4Product = ""
+    @State private var step1State4Shade = ""
     @State private var step1State4EditMode = false
     @State private var step1State4EditingField: String? = nil
     @State private var step1State4EditSheetFieldKey: String = ""
@@ -283,7 +289,7 @@ struct SwatchStep1View: View {
             }
             .frame(maxWidth: .infinity)
 
-            Button(action: { dismiss() }) {
+            Button(action: { onClose?() ?? dismiss() }) {
                 Image("close_line_swatch")
                     .resizable()
                     .scaledToFit()
@@ -532,6 +538,8 @@ struct SwatchStep1View: View {
         step1ShowingState3 = false
         step1ShowingState4 = false
         step1ShowingFirstPhotoReview = false
+        state3ApiDone = false
+        state3TimerDone = false
         mockTimer?.invalidate()
         mockProgressTotal = 0
     }
@@ -551,11 +559,33 @@ struct SwatchStep1View: View {
                     lipstickImageURL1 = url1
                     lipstickImageURL2 = url2
                     step1ShowingState3 = true
+                    state3ApiDone = false
+                    state3TimerDone = false
                     startMockProgressTimer()
                 }
-            } catch {
+                // Log 2 URL ảnh và access_token gửi lên API để check
+                let accessToken = AuthService.shared.getAccessToken()
+                print("[Swatch] access_token: \(accessToken ?? "nil")")
+                print("[Swatch] POST /api/mobile/swatches/recognize — image_urls[0]: \(url1)")
+                print("[Swatch] POST /api/mobile/swatches/recognize — image_urls[1]: \(url2)")
+                // Gọi API recognize song song với timer 10s
+                let result = try await SwatchAPIService.shared.recognizeLipstick(imageURLs: [url1, url2])
                 await MainActor.run {
-                    state3UploadError = error.localizedDescription
+                    step1State4Brand = result.brand ?? ""
+                    step1State4Product = result.product ?? ""
+                    step1State4Shade = result.shade ?? ""
+                    state3ApiDone = true
+                    if state3TimerDone {
+                        step1ShowingState4 = true
+                    }
+                }
+            } catch {
+                print("[Swatch] Error: \(error)")
+                await MainActor.run {
+                    let message = error.localizedDescription
+                    state3UploadError = message.hasPrefix("A server with the specified hostname") || message.contains("could not be found")
+                        ? "\(message) Kiểm tra: 1) Backend đang chạy tại \(AppConfig.swatchAPIBaseURL)? 2) Simulator và máy chạy backend cùng WiFi/mạng."
+                        : message
                     showUploadErrorAlert = true
                 }
             }
@@ -571,7 +601,10 @@ struct SwatchStep1View: View {
                 mockTimer?.invalidate()
                 mockTimer = nil
                 mockProgressTotal = 100
-                step1ShowingState4 = true
+                state3TimerDone = true
+                if state3ApiDone {
+                    step1ShowingState4 = true
+                }
             }
         }
         RunLoop.main.add(mockTimer!, forMode: .common)

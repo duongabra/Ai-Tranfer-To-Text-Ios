@@ -13,6 +13,8 @@ struct ProfileView: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
     @StateObject private var subscriptionViewModel = SubscriptionViewModel.shared
     @State private var showingLogoutConfirmation = false
+    /// When true (e.g. shown as tab), hide the close button.
+    var isEmbeddedInTab: Bool = false
 
     private var displayName: String {
         guard let user = authViewModel.currentUser else { return "Beauty" }
@@ -38,7 +40,7 @@ struct ProfileView: View {
                 .padding(.bottom, 40)
             }
 
-            closeButton
+            if !isEmbeddedInTab { closeButton }
         }
         .navigationBarHidden(true)
         .onAppear {

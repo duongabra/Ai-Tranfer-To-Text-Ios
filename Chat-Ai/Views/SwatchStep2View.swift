@@ -110,8 +110,8 @@ struct SwatchStep2View: View {
         } message: {
             Text(step2DownloadErrorMessage ?? "Could not save image.")
         }
-        .onChange(of: step2SwatchResult) { newValue in
-            step2State4IsFavorited = newValue?.isFavorited ?? false
+        .onChange(of: step2SwatchResult?.id) { _ in
+            step2State4IsFavorited = step2SwatchResult?.isFavorited ?? false
         }
         .onDisappear {
             step2ProgressTimer?.invalidate()

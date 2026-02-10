@@ -8,10 +8,8 @@
 import SwiftUI
 
 private enum HomeConstants {
-    /// Before (trái) – ảnh chưa son
-    static let placeholderBeforeImageURL = "https://static.wikia.nocookie.net/meangirls/images/2/27/Amanda_Seyfried.jpg/revision/latest?cb=20240901225458"
-    /// After (phải) – ảnh đã thử son (placeholder: có thể thay URL thật)
-    static let placeholderAfterImageURL = "https://static.wikia.nocookie.net/meangirls/images/2/27/Amanda_Seyfried.jpg/revision/latest?cb=20240901225458"
+    /// Asset name cho ảnh Before/After trên main card (từ HomePlaceholder.imageset)
+    static let placeholderImageName = "HomePlaceholder"
     static let cardCornerRadius: CGFloat = 16
     static let badgeBlur: CGFloat = 8
 }
@@ -188,14 +186,8 @@ struct HomeView: View {
 
     private var mainCardSection: some View {
         HStack(spacing: 12) {
-            beforeAfterCard(
-                urlString: HomeConstants.placeholderBeforeImageURL,
-                label: "Before"
-            )
-            beforeAfterCard(
-                urlString: HomeConstants.placeholderAfterImageURL,
-                label: "After"
-            )
+            beforeAfterCard(imageName: HomeConstants.placeholderImageName, label: "Before")
+            beforeAfterCard(imageName: HomeConstants.placeholderImageName, label: "After")
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 20)
@@ -203,28 +195,19 @@ struct HomeView: View {
 
     private static let cardInnerPadding: CGFloat = 4
 
-    private func beforeAfterCard(urlString: String, label: String) -> some View {
+    private func beforeAfterCard(imageName: String, label: String) -> some View {
         let innerW = Self.cardWidth - Self.cardInnerPadding * 2
         let innerH = Self.cardHeight - Self.cardInnerPadding * 2
         return ZStack(alignment: .topLeading) {
             Color.white
 
-            Group {
-                if let url = URL(string: urlString) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let img):
-                            img.resizable().scaledToFill()
-                        default:
-                            Color(hex: "E4E4E4")
-                        }
-                    }
-                }
-            }
-            .frame(width: innerW, height: innerH)
-            .clipped()
-            .cornerRadius(HomeConstants.cardCornerRadius - 1)
-            .padding(Self.cardInnerPadding)
+            Image(imageName)
+                .resizable()
+                .scaledToFill()
+                .frame(width: innerW, height: innerH)
+                .clipped()
+                .cornerRadius(HomeConstants.cardCornerRadius - 1)
+                .padding(Self.cardInnerPadding)
 
             badgeLabel(text: label)
                 .padding(8 + Self.cardInnerPadding)

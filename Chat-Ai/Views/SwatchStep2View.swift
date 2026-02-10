@@ -47,6 +47,7 @@ struct SwatchStep2View: View {
     @State private var showStep2DownloadSuccessAlert = false
     @State private var showStep2DownloadErrorAlert = false
     @State private var step2DownloadErrorMessage: String? = nil
+    @State private var step2State4IsFavorited = false
 
     /// Validate face API: loading, result (is_valid + checks + issues), URL from upload (reuse for State 3)
     @State private var step2ValidationLoading = false
@@ -108,6 +109,9 @@ struct SwatchStep2View: View {
             Button("OK", role: .cancel) { }
         } message: {
             Text(step2DownloadErrorMessage ?? "Could not save image.")
+        }
+        .onChange(of: step2SwatchResult) { newValue in
+            step2State4IsFavorited = newValue?.isFavorited ?? false
         }
         .onDisappear {
             step2ProgressTimer?.invalidate()
@@ -327,6 +331,19 @@ struct SwatchStep2View: View {
             step2MockProgress = startProgress + (100 - startProgress) * CGFloat(elapsed / 1)
         }
         RunLoop.main.add(step2ProgressTimer!, forMode: .common)
+    }
+
+    /// Toggle favorite cho swatch ở State 4 (giống SwatchDetailView).
+    private func step2ToggleFavorite() async {
+        guard let swatchId = step2SwatchResult?.id else { return }
+        do {
+            let response = try await SwatchService.shared.toggleFavorite(swatchId: swatchId)
+            await MainActor.run {
+                step2State4IsFavorited = response.isFavorited
+            }
+        } catch {
+            print("[SwatchStep2] Toggle favorite error: \(error)")
+        }
     }
 
     /// Tải ảnh swatch (swatch_url) và lưu vào thư viện ảnh. Kiểm tra quyền đúng: addOnly (iOS 14+), xử lý denied/restricted.
@@ -612,17 +629,28 @@ struct SwatchStep2View: View {
                 }
                 .buttonStyle(PlainButtonStyle())
                 .disabled(step2DownloadingImage || step2SwatchResult?.swatchUrl == nil)
-                Button(action: { /* TODO: favorite */ }) {
-                    Image("step2_heart_swatch")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 17, height: 15)
-                        .frame(width: 44, height: 44)
-                        .background(Color.white)
-                        .overlay(Circle().stroke(Color(hex: "030712"), lineWidth: 1))
-                        .cornerRadius(9999)
+                Button(action: { Task { await step2ToggleFavorite() } }) {
+                    Group {
+                        if step2State4IsFavorited {
+                            Image(systemName: "heart.fill")
+                                .font(.system(size: 18))
+                                .foregroundColor(Color(hex: "EF4444"))
+                        } else {
+                            Image("step2_heart_swatch")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 17, height: 15)
+                                .foregroundColor(Color(hex: "030712"))
+                        }
+                    }
+                    .frame(width: 44, height: 44)
+                    .background(Color.white)
+                    .overlay(Circle().stroke(Color(hex: "030712"), lineWidth: 1))
+                    .cornerRadius(9999)
                 }
                 .buttonStyle(PlainButtonStyle())
+                .disabled(step2SwatchResult?.id == nil)
             }
             // Score card — score + ai_description từ GET swatch
             HStack(alignment: .center, spacing: 12) {

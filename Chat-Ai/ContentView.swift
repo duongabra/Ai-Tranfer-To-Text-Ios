@@ -2,7 +2,7 @@
 //  ContentView.swift
 //  Chat-Ai
 //
-//  Main content: 3 tabs (Home, Swatch, Profile) + bottom tab bar (Figma 55496-2094).
+//  Main content: 3 tabs (Home, Swatch Upload, My Swatches) + bottom tab bar (Figma 55496-2094).
 //
 
 import SwiftUI
@@ -34,7 +34,7 @@ struct ContentView: View {
                     }
                     .navigationViewStyle(StackNavigationViewStyle())
                 } else {
-                    ProfileView(isEmbeddedInTab: true)
+                    MySwatchesView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
